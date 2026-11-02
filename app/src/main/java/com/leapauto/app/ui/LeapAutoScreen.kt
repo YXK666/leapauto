@@ -1815,7 +1815,7 @@ private fun MyContent(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .settingsGlassCard(),
+                .settingsGlassCard(tone = SettingsIconTone.KEY),
             shape = RoundedCornerShape(16.dp),
             color = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
@@ -2149,7 +2149,7 @@ private fun OpenSourceCodeCard() {
                     Toast.makeText(context, "未找到可用浏览器", Toast.LENGTH_SHORT).show()
                 }
             }
-            .settingsGlassCard(),
+            .settingsGlassCard(tone = SettingsIconTone.CODE),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -2298,7 +2298,7 @@ private fun SupportAuthorCard(onClick: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .settingsGlassCard(),
+            .settingsGlassCard(tone = SettingsIconTone.SUPPORT),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -2578,7 +2578,7 @@ private fun VersionUpdateCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .settingsGlassCard(),
+            .settingsGlassCard(auraColor = statusColor.copy(alpha = if (LocalAppDarkTheme.current) 0.11f else 0.08f)),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -2745,11 +2745,12 @@ private fun AmapWebKeyConfigCard(
 
     val hasCustomKey = !savedCustomKey.isNullOrBlank()
     val activeStatusText = if (hasCustomKey) "已启用专属 Key" else "未配置专属 Key (点击配置)"
+    val amapAura = (if (hasCustomKey) MaterialTheme.statusGood else MaterialTheme.colorScheme.primary).copy(alpha = if (LocalAppDarkTheme.current) 0.11f else 0.08f)
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .settingsGlassCard(),
+            .settingsGlassCard(auraColor = amapAura),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -3031,10 +3032,12 @@ private fun VehicleCustomImageCard(
         }
     }
 
+    val customImageAura = (if (hasCustomImage) MaterialTheme.statusGood else MaterialTheme.colorScheme.primary).copy(alpha = if (LocalAppDarkTheme.current) 0.11f else 0.08f)
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .settingsGlassCard(),
+            .settingsGlassCard(auraColor = customImageAura),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -3317,7 +3320,7 @@ private fun Widget4x2ActionsCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .settingsGlassCard(),
+            .settingsGlassCard(tone = SettingsIconTone.KEY),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -3416,7 +3419,7 @@ private fun ThemeConfigCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .settingsGlassCard()
+            .settingsGlassCard(tone = SettingsIconTone.THEME)
             .clickable { onOpenThemeDialog() },
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
@@ -3494,7 +3497,7 @@ private fun WidgetBackgroundStyleCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .settingsGlassCard(),
+            .settingsGlassCard(tone = SettingsIconTone.THEME),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -3571,7 +3574,7 @@ private fun WidgetOpacityCard(opacity: Int, onOpacityChange: (Int) -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .settingsGlassCard(),
+            .settingsGlassCard(tone = SettingsIconTone.THEME),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -3642,7 +3645,7 @@ private fun QuickSettingsTileCard() {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .settingsGlassCard(),
+            .settingsGlassCard(tone = SettingsIconTone.KEY),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -4025,15 +4028,21 @@ internal fun glassInsetBorder(warning: Boolean = false): BorderStroke {
     )
 }
 
-/** 设置页卡片的轻量环境底色，保持 OTA 卡片的层次感但不干扰文字阅读。 */
+/** 设置页卡片的轻量环境底色，右上角泛起与模块主题色同频的微光折射晕。 */
 @Composable
 private fun Modifier.settingsGlassCard(
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
-    auraColor: Color? = null
+    auraColor: Color? = null,
+    tone: SettingsIconTone? = null
 ): Modifier {
-    val resolvedAura = auraColor ?: MaterialTheme.colorScheme.primary.copy(
-        alpha = if (LocalAppDarkTheme.current) 0.08f else 0.055f
-    )
+    val isDark = LocalAppDarkTheme.current
+    val resolvedAura = when {
+        auraColor != null -> auraColor
+        tone != null -> tone.color(isDark).copy(alpha = if (isDark) 0.11f else 0.08f)
+        else -> MaterialTheme.colorScheme.primary.copy(
+            alpha = if (isDark) 0.08f else 0.055f
+        )
+    }
     return frostedGlassCard(
         shape = shape,
         auraColor = resolvedAura,
@@ -5497,36 +5506,28 @@ internal object ChargingCenterPillPresentation {
                 val label = if (formattedTime != null) "剩$formattedTime" else "充电中"
                 ChargingPillModel(ChargingPillType.CHARGING, label, hasBoltIcon = true)
             }
-            // 2. 刚刚解锁充电枪成功后（车端锁止销已收起，提示可拔枪）
-            chargerUnlocked -> {
-                ChargingPillModel(ChargingPillType.GUN_CONNECTED, "充电枪已解锁", hasBoltIcon = false)
-            }
-            // 3. 充满 100%
+            // 2. 充满 100%
             (presentation.state == ChargeStatus.PresentationState.FULL || (socPercent != null && socPercent >= 100)) && chargeState in setOf(2, 6) -> {
                 ChargingPillModel(ChargingPillType.CHARGED, "已充满", hasBoltIcon = false)
             }
-            // 4. 达到健康充电目标限额正常完成
+            // 3. 达到健康充电目标限额正常完成
             isHealthyChargeEnabled && healthyChargeLimitSoc != null && socPercent != null && socPercent >= healthyChargeLimitSoc && chargeState in setOf(2, 6) -> {
                 ChargingPillModel(ChargingPillType.CHARGED, "充电完成", hasBoltIcon = false)
             }
-            // 5. 充电故障
+            // 4. 充电故障
             presentation.state == ChargeStatus.PresentationState.FAULT -> {
                 ChargingPillModel(ChargingPillType.FAULT, presentation.label)
             }
-            // 6. 插枪且有预约任务（开启预约且有开始时间，或车端报告预约等待）
+            // 5. 插枪且有预约任务（开启预约且有开始时间，或车端报告预约等待）
             (chargeState == 4 || isGunConnected && chargeScheduleEnabled == true) && !chargeScheduleStart.isNullOrBlank() -> {
                 val startTime = chargeScheduleStart.trim()
                 ChargingPillModel(ChargingPillType.SCHEDULED_WAITING, "${startTime}开始充电", hasBoltIcon = false)
             }
-            // 7. 插枪且处于预约等待（但未取到具体开始时间）
+            // 6. 插枪且处于预约等待（但未取到具体开始时间）
             chargeState == 4 -> {
                 ChargingPillModel(ChargingPillType.SCHEDULED_WAITING, "预约等待中", hasBoltIcon = false)
             }
-            // 8. 插枪未充 / 手动停止充电后 / 充电完成待拔枪（均显示充电枪物理连接）
-            isGunConnected -> {
-                ChargingPillModel(ChargingPillType.GUN_CONNECTED, "充电枪已插", hasBoltIcon = false)
-            }
-            // 9. 未插枪默认状态
+            // 7. 默认状态（未插枪、插枪未充、手动停充后、解锁枪后均显示统一入口）
             else -> {
                 ChargingPillModel(ChargingPillType.DEFAULT, "充电中心", hasBoltIcon = false)
             }
@@ -5608,7 +5609,7 @@ private fun ChargingCenterPill(
                         tint = MaterialTheme.statusGood
                     )
                 }
-                pillModel.type == ChargingPillType.GUN_CONNECTED || pillModel.type == ChargingPillType.CHARGED -> {
+                pillModel.type == ChargingPillType.CHARGED -> {
                     Box(
                         modifier = Modifier
                             .size(HomeStatusPillStyle.dotSize)

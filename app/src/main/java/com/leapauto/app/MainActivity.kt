@@ -729,7 +729,7 @@ class MainActivity : ComponentActivity() {
             ThemeManager.isVehicle3DSupported(this, session.selectedVin), themeId
         )
         ThemeManager.setActiveThemeId(this, session.selectedVin, selectedThemeId)
-        ControlWidget.refreshData(this)
+        ControlWidget.refreshAppearance(this)
     }
 
     private fun updateBluetoothKeyFeatureEnabled(enabled: Boolean) {
@@ -3206,7 +3206,7 @@ class MainActivity : ComponentActivity() {
         energyLastSuccessAt = 0L
         vehicleImageVersion++
 
-        ControlWidget.refreshData(this)
+        ControlWidget.refreshAppearance(this)
         if (::bluetoothRuntime.isInitialized) {
             bluetoothRuntime.attachSession(session)
             if (bluetoothManagedKey?.needsBackground == true) {
