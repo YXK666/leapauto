@@ -101,8 +101,9 @@ The detail pages currently include:
 - `空调`: on/off, 16-32 C integer temperature control, quick cooling, quick heat,
   and windshield defrost. Commands use the existing climate safety and optimistic
   state policies; telemetry remains the source of truth after refresh.
-- `车辆位置`: validated current location status and update time, plus an explicit
-  handoff to an installed external map application. No in-app map or address is shown.
+- `车辆位置`: validated current location status and update time, a Chinese address
+  from Amap reverse geocoding, an explicit copy action, and an explicit handoff to a
+  chosen installed external map application.
 - `我的`: operation password, appearance mode, widget opacity, widget sensitive
   action verification, signal debugging, support-tab visibility, charge
   notifications, release notes/update check, and logout.
@@ -119,10 +120,13 @@ The current location path is deliberately narrow:
   `expired` through 60 minutes by the current default policy.
 - The last trusted snapshot is held in `MainActivity` memory only. Raw coordinates
   are not written to `SessionStore`, the widget snapshot, logs, or release docs.
-- No map tiles or reverse geocoding are loaded in-app. Raw coordinates and addresses
-  are not cached; startup removes the legacy `vehicle_location_cache` preference.
-- A coordinate is handed to an installed external map only after the user taps
-  navigation and chooses an app. Do not add background tracking or sharing implicitly.
+- No map tiles are rendered in-app. Reverse geocoding uses the user's own Amap Web
+  service key, and the resulting address is kept in memory with a short distance
+  cache so reopening the parking dialog does not spend extra quota.
+- The address may be displayed in the parking dialog and copied to the system
+  clipboard on explicit user action. A coordinate is handed to a chosen installed
+  external map only after the user taps the location card. Do not add background
+  tracking or sharing implicitly.
 
 Do not infer a WGS-84/GCJ-02 conversion outside the code's verified contract. The
 current verified path marks the accepted signal-map coordinates as `GCJ02`; any
@@ -383,9 +387,9 @@ applies to both workflows.
 - `SecureValueStore` encrypts phone/auth/PIN values with AES-GCM using an
   install-local Android Keystore key. Non-secret preferences and the widget's last
   known-good snapshot remain in app-private storage.
-- Do not persist raw coordinates or reverse-geocoded addresses. Current location
-  coordinates stay in activity memory and are shared with an external map only
-  after an explicit navigation action.
+- Reverse-geocoded addresses may be displayed, cached in memory, and copied to the
+  clipboard on explicit user action. Current location coordinates stay in activity
+  memory and are shared with an external map only after an explicit navigation action.
 - Debug-only signal and vehicle-list screens can display or copy raw responses.
   They must keep the existing warning and explicit-copy boundary and must not be
   used to collect or commit real account/vehicle data.

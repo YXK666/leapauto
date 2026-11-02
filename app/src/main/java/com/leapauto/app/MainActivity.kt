@@ -195,6 +195,7 @@ class MainActivity : ComponentActivity() {
     @Volatile private var vehicleLocationSnapshot: VehicleLocationSnapshot? = null
     private var vehicleLocationSnapshotState by mutableStateOf<VehicleLocationSnapshot?>(null)
     private var vehicleAddress by mutableStateOf<GeocodedAddress?>(null)
+    private var vehicleAddressDiagnostic by mutableStateOf<RegeoDiagnostic?>(null)
     private var liveWeather by mutableStateOf<com.leapauto.app.weather.LiveWeather?>(null)
     @Volatile private var lastGeocodedLocation: Pair<Double, Double>? = null
     private var statusError by mutableStateOf("")
@@ -453,6 +454,8 @@ class MainActivity : ComponentActivity() {
                     statusUpdatedAtEpochMs = statusUpdatedAtEpochMs,
                     locationSnapshot = vehicleLocationSnapshotState,
                     vehicleAddress = vehicleAddress,
+                    vehicleAddressDiagnostic = vehicleAddressDiagnostic,
+                    onRetryVehicleAddress = ::retryVehicleAddress,
                     liveWeather = liveWeather,
                     vehicleVin = session.selectedVin,
                     selectedThemeId = selectedThemeId,
@@ -4151,6 +4154,10 @@ class MainActivity : ComponentActivity() {
         val generation = operationGeneration
         asyncWorker.execute {
             val address = VehicleLocationGeocoder.reverseGeocode(lat, lng, context = this@MainActivity)
+            val diagnostic = VehicleLocationGeocoder.lastDiagnostic
+            runOnMain(generation) {
+                vehicleAddressDiagnostic = diagnostic
+            }
             if (address != null) {
                 runOnMain(generation) {
                     vehicleAddress = address
@@ -4170,6 +4177,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** 车主手动重试：解冻被熔断的 Key、清空缓存后立即重新反查一次。 */
+    private fun retryVehicleAddress() {
+        val snapshot = vehicleLocationSnapshotState ?: return
+        lastGeocodedLocation = null
+        VehicleLocationGeocoder.clearCache()
+        VehicleLocationGeocoder.clearDiagnostic()
+        AmapApiKeyManager.resetExhaustedState()
+        vehicleAddressDiagnostic = null
+        maybeUpdateVehicleAddress(snapshot)
     }
 
     private fun clearChargingControlState() {

@@ -77,7 +77,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.material3.AlertDialog
@@ -124,7 +123,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import java.text.SimpleDateFormat
@@ -296,6 +297,8 @@ fun LeapAutoScreen(
     statusUpdatedAtEpochMs: Long = 0L,
     locationSnapshot: VehicleLocationSnapshot? = null,
     vehicleAddress: GeocodedAddress? = null,
+    vehicleAddressDiagnostic: com.leapauto.app.RegeoDiagnostic? = null,
+    onRetryVehicleAddress: () -> Unit = {},
     liveWeather: com.leapauto.app.weather.LiveWeather? = null,
     vehicleVin: String = "",
     statusError: String,
@@ -882,6 +885,8 @@ fun LeapAutoScreen(
                         vehicleConfig.nickname,
                         locationSnapshot,
                         vehicleAddress,
+                        vehicleAddressDiagnostic,
+                        onRetryVehicleAddress,
                         liveWeather,
                         energyState,
                         statusError,
@@ -983,6 +988,7 @@ fun LeapAutoScreen(
                         ScreenDestination.ACCOUNT -> {
                             MyContent(
                                 openAmapConfiguration = openAmapConfiguration,
+                                vehicleAddressDiagnostic = vehicleAddressDiagnostic,
                                 onAmapConfigurationOpened = { openAmapConfiguration = false },
                                 onAmapConfigurationChanged = {
                                     hasConfiguredAmapKey = com.leapauto.app.AmapApiKeyManager.hasConfiguredKey(amapContext)
@@ -1322,6 +1328,8 @@ private fun HomeContent(
     status: VehicleStatus?, statusUpdatedAtEpochMs: Long, vehicleNickname: String,
     locationSnapshot: VehicleLocationSnapshot?,
     vehicleAddress: GeocodedAddress? = null,
+    vehicleAddressDiagnostic: com.leapauto.app.RegeoDiagnostic? = null,
+    onRetryVehicleAddress: () -> Unit = {},
     liveWeather: com.leapauto.app.weather.LiveWeather? = null,
     energyState: EnergyAnalyticsState,
     statusError: String,
@@ -1552,7 +1560,9 @@ private fun HomeContent(
 
     if (showParkingDetailDialog || (showAddressNavigationDialog && locationSnapshot != null)) {
         ParkingDetailDialog(
-            fullAddress = vehicleAddress?.fullAddress ?: vehicleAddress?.shortAddress.orEmpty(),
+            address = vehicleAddress,
+            diagnostic = vehicleAddressDiagnostic,
+            onRetryVehicleAddress = onRetryVehicleAddress,
             statusUpdatedAtEpochMs = statusUpdatedAtEpochMs,
             locationSnapshot = locationSnapshot,
             liveWeather = liveWeather,
@@ -1596,6 +1606,7 @@ private fun HomeContent(
 @Composable
 private fun MyContent(
     openAmapConfiguration: Boolean = false,
+    vehicleAddressDiagnostic: com.leapauto.app.RegeoDiagnostic? = null,
     onAmapConfigurationOpened: () -> Unit = {},
     onAmapConfigurationChanged: () -> Unit = {},
     phone: String = "",
@@ -1792,6 +1803,7 @@ private fun MyContent(
         // 5. 高德地图 Web Key 配置
         AmapWebKeyConfigCard(
             initiallyExpanded = openAmapConfiguration,
+            diagnostic = vehicleAddressDiagnostic,
             onConfigurationChanged = onAmapConfigurationChanged,
             modifier = Modifier.onGloballyPositioned {
                 amapConfigurationTop = it.positionInParent().y.toInt().coerceAtLeast(0)
@@ -2708,6 +2720,7 @@ private fun VersionUpdateCard(
 private fun AmapWebKeyConfigCard(
     modifier: Modifier = Modifier,
     initiallyExpanded: Boolean = false,
+    diagnostic: com.leapauto.app.RegeoDiagnostic? = null,
     onConfigurationChanged: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -2807,6 +2820,57 @@ private fun AmapWebKeyConfigCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 16.sp
                         )
+                    }
+                }
+
+                if (diagnostic != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.glassInsetSurface
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "最近一次位置解析",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "复制",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            copyTextToClipboard(
+                                                context = context,
+                                                text = diagnostic.describe() + "\n" + diagnostic.requestUrl,
+                                                label = "位置解析诊断",
+                                                toast = "诊断信息已复制"
+                                            )
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Text(
+                                diagnostic.describe(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "请求：${diagnostic.requestUrl}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "响应：status=${diagnostic.status ?: "-"} infocode=${diagnostic.infocode ?: "-"} http=${diagnostic.httpCode ?: "-"} 耗时=${diagnostic.durationMs}ms",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
@@ -8209,10 +8273,20 @@ private fun FullScreenImagePreviewDialog(
     }
 }
 
+/** 驻车弹窗内车辆位置小地图的加载状态。 */
+private sealed class ParkingStaticMapState {
+    object Idle : ParkingStaticMapState()
+    object Loading : ParkingStaticMapState()
+    data class Success(val bitmap: android.graphics.Bitmap) : ParkingStaticMapState()
+    object Failure : ParkingStaticMapState()
+}
+
 @Composable
 private fun ParkingDetailDialog(
-    fullAddress: String,
+    address: GeocodedAddress?,
     statusUpdatedAtEpochMs: Long,
+    diagnostic: com.leapauto.app.RegeoDiagnostic? = null,
+    onRetryVehicleAddress: () -> Unit = {},
     locationSnapshot: VehicleLocationSnapshot? = null,
     liveWeather: com.leapauto.app.weather.LiveWeather? = null,
     onFetchParkingPhoto: ((ChassisParkingPhoto?, android.graphics.Bitmap?) -> Unit) -> Unit,
@@ -8220,10 +8294,12 @@ private fun ParkingDetailDialog(
 ) {
     val context = LocalContext.current
     val apps = remember(context) { ExternalMapLauncher.availableApps(context, forNavigation = true) }
+    val vehicleLocation = locationSnapshot?.location
     var photoState by remember { mutableStateOf<ParkingPhotoLoadState>(ParkingPhotoLoadState.Loading) }
     var uploadTimeMs by remember { mutableLongStateOf(0L) }
     var showExternalMapDialog by remember { mutableStateOf(false) }
     var showFullScreenPhoto by remember { mutableStateOf(false) }
+    var staticMapState by remember { mutableStateOf<ParkingStaticMapState>(ParkingStaticMapState.Idle) }
 
     var phoneLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var hasLocationPerm by remember { mutableStateOf<Boolean>(PhoneLocationHelper.hasLocationPermission(context)) }
@@ -8245,6 +8321,19 @@ private fun ParkingDetailDialog(
             PhoneLocationHelper.requestCurrentLocation(context) { lat: Double, lng: Double ->
                 phoneLocation = Pair(lat, lng)
             }
+        }
+    }
+
+    LaunchedEffect(vehicleLocation?.latitude, vehicleLocation?.longitude) {
+        val target = vehicleLocation ?: return@LaunchedEffect
+        staticMapState = ParkingStaticMapState.Loading
+        val bitmap = withContext(Dispatchers.IO) {
+            com.leapauto.app.VehicleStaticMap.fetch(context, target.latitude, target.longitude)
+        }
+        staticMapState = if (bitmap != null) {
+            ParkingStaticMapState.Success(bitmap)
+        } else {
+            ParkingStaticMapState.Failure
         }
     }
 
@@ -8451,20 +8540,23 @@ private fun ParkingDetailDialog(
                     }
                 }
 
-                // 2. 位置信息 (点击直接弹出地图应用进行导航，纯粹无冗余)
-                val hasLocation = locationSnapshot?.location != null
+                // 2. 位置信息：展示中文地址，支持复制地址与跳转指定地图应用
+                val canNavigate = vehicleLocation != null && apps.isNotEmpty()
+                val addressDisplay = parkingAddressDisplay(address?.shortAddress, address?.fullAddress)
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .frostedGlassCard(shape = RoundedCornerShape(12.dp))
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable(enabled = hasLocation && apps.isNotEmpty()) {
+                        .clickable {
+                            val loc = vehicleLocation ?: return@clickable
+                            if (apps.isEmpty()) {
+                                Toast.makeText(context, "未检测到可用地图应用", Toast.LENGTH_SHORT).show()
+                                return@clickable
+                            }
                             if (apps.size == 1) {
-                                val loc = locationSnapshot?.location
-                                if (loc != null) {
-                                    runCatching {
-                                        ExternalMapLauncher.navigateToVehicle(context, apps.first(), loc.latitude, loc.longitude)
-                                    }
+                                runCatching {
+                                    ExternalMapLauncher.navigateToVehicle(context, apps.first(), loc.latitude, loc.longitude)
                                 }
                             } else {
                                 showExternalMapDialog = true
@@ -8475,7 +8567,7 @@ private fun ParkingDetailDialog(
                     border = glassCardBorder()
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier.padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -8485,30 +8577,139 @@ private fun ParkingDetailDialog(
                             modifier = Modifier.size(18.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )
-                        SelectionContainer(Modifier.weight(1f)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "车辆位置",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val placeholder = when {
+                                diagnostic?.outcome == com.leapauto.app.RegeoDiagnostic.OUTCOME_NO_KEY ->
+                                    "未配置高德 Web 服务 Key"
+
+                                diagnostic != null -> "地址获取失败：${diagnostic.describe()}"
+                                else -> "正在获取车辆位置..."
+                            }
+                            Text(
+                                text = addressDisplay?.primary ?: placeholder,
+                                color = if (addressDisplay != null) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            addressDisplay?.secondary?.let { fullAddressText ->
                                 Text(
-                                    text = "车辆位置",
+                                    text = fullAddressText,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = fullAddress.ifBlank { "正在获取车辆位置..." },
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
+                            if (addressDisplay == null && vehicleLocation != null) {
+                                Text(
+                                    text = "点击重新获取地址",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { onRetryVehicleAddress() }
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
                         }
-                        if (hasLocation && apps.isNotEmpty()) {
+                        if (addressDisplay != null) {
+                            IconButton(
+                                onClick = {
+                                    copyTextToClipboard(
+                                        context = context,
+                                        text = addressDisplay.clipboardText,
+                                        label = "车辆位置",
+                                        toast = "地址已复制"
+                                    )
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_phosphor_copy),
+                                    contentDescription = "复制地址",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        if (canNavigate) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_phosphor_caret_right),
                                 contentDescription = "导航",
                                 modifier = Modifier.size(14.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                    }
+                }
+
+                // 2.1 车辆位置小地图：加载中显示骨架，失败或未取到坐标时整体隐藏
+                if (staticMapState is ParkingStaticMapState.Loading || staticMapState is ParkingStaticMapState.Success) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .frostedGlassCard(shape = RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                val loc = vehicleLocation ?: return@clickable
+                                if (apps.isEmpty()) {
+                                    Toast.makeText(context, "未检测到可用地图应用", Toast.LENGTH_SHORT).show()
+                                    return@clickable
+                                }
+                                if (apps.size == 1) {
+                                    runCatching {
+                                        ExternalMapLauncher.navigateToVehicle(context, apps.first(), loc.latitude, loc.longitude)
+                                    }
+                                } else {
+                                    showExternalMapDialog = true
+                                }
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Transparent,
+                        border = glassCardBorder()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(164.dp)
+                        ) {
+                            when (val state = staticMapState) {
+                                is ParkingStaticMapState.Success -> {
+                                    Image(
+                                        bitmap = state.bitmap.asImageBitmap(),
+                                        contentDescription = "车辆位置小地图",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+
+                                else -> {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "地图加载中...",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -8674,6 +8875,15 @@ private fun ParkingDetailDialog(
             onDismiss = { showFullScreenPhoto = false }
         )
     }
+}
+
+/** 用户主动点击复制时，将文本写入系统剪贴板。 */
+private fun copyTextToClipboard(context: Context, text: String, label: String, toast: String) {
+    if (text.isBlank()) return
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        ?: return
+    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+    Toast.makeText(context, toast, Toast.LENGTH_SHORT).show()
 }
 
 @Composable
