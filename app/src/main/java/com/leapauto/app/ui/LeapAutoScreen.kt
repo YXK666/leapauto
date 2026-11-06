@@ -8436,7 +8436,8 @@ private fun ParkingDetailDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 1. 实景照片卡片 (点击可放大全屏预览)
+                // 1. 实景照片卡片 (点击可放大全屏预览)：拉取后无照片、失败或未加载时整块隐藏，不留占位
+                if (photoState is ParkingPhotoLoadState.Loading || photoState is ParkingPhotoLoadState.Success) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -8551,29 +8552,9 @@ private fun ParkingDetailDialog(
                                 }
                             }
                         }
-                        else -> {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 24.dp, horizontal = 16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    "暂无驻车实景照片",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    "熄火停稳后车身环视相机自动拍摄",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                        else -> {}
                     }
+                }
                 }
 
                 // 2. 位置信息：展示中文地址，支持复制地址与跳转指定地图应用
