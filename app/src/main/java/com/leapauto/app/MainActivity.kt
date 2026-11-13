@@ -285,6 +285,7 @@ class MainActivity : ComponentActivity() {
     private var scheduledPreheatDays by mutableStateOf("1,1,1,1,1,1,1")
     private var scheduledAcPlan by mutableStateOf(ScheduledAcPlan())
     private var scheduledAcCapability by mutableStateOf(ScheduledAcCapability.UNKNOWN)
+    private var openScheduledAcOnLaunch by mutableStateOf(false)
     private var versionUpdateState by mutableStateOf<VersionUpdateState>(VersionUpdateState.Idle)
     private var showPowerTypeDialog by mutableStateOf(false)
     private var handledUpdateVersion by mutableStateOf<String?>(null)
@@ -432,6 +433,9 @@ class MainActivity : ComponentActivity() {
         scheduledPreheatDays = sessionStore.loadScheduledPreheatDays(session.selectedVin)
         scheduledAcPlan = loadScheduledAcPlan(session.selectedVin)
         scheduledAcCapability = sessionStore.loadScheduledAcCapability(session.selectedVin)
+        if (intent?.getBooleanExtra(ControlWidget.EXTRA_OPEN_SCHEDULED_AC, false) == true) {
+            openScheduledAcOnLaunch = true
+        }
         ChargeNotificationManager.ensureChannel(this)
         ParkingAnomalyNotificationManager.ensureChannel(this)
         if (pinSaved) {
@@ -504,6 +508,8 @@ class MainActivity : ComponentActivity() {
                     onApplyScheduledPreheat = ::applyScheduledBatteryPreheat,
                     onApplyScheduledAc = ::applyScheduledAirConditioning,
                     onLoadScheduledAc = ::fetchScheduledAcForEditor,
+                    openScheduledAcSheet = openScheduledAcOnLaunch,
+                    onDismissScheduledAcSheet = { openScheduledAcOnLaunch = false },
                     onRefreshChargingSettings = { syncChargePlanFromServer(force = true) },
                     onFetchParkingPhoto = ::fetchParkingPhoto,
                     networkDebugEnabled = networkDebugEnabled,
@@ -1316,6 +1322,9 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.getBooleanExtra(ControlWidget.EXTRA_OPEN_SCHEDULED_AC, false)) {
+            openScheduledAcOnLaunch = true
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -2177,7 +2186,9 @@ class MainActivity : ComponentActivity() {
         mode = ScheduledAcMode.fromName(sessionStore.loadScheduledAcMode(vin)),
         circle = AirCircle.entries.firstOrNull { it.name == sessionStore.loadScheduledAcCircle(vin) }
             ?: AirCircle.INNER,
-        windshieldDefogging = sessionStore.loadScheduledAcDefrost(vin)
+        windshieldDefogging = sessionStore.loadScheduledAcDefrost(vin),
+        closeWindows = sessionStore.loadScheduledAcCloseWindows(vin),
+        closeSunshade = sessionStore.loadScheduledAcCloseSunshade(vin)
     )
 
     private fun persistScheduledAcPlan(vin: String, plan: ScheduledAcPlan) {
@@ -2189,6 +2200,8 @@ class MainActivity : ComponentActivity() {
         sessionStore.saveScheduledAcMode(vin, plan.mode)
         sessionStore.saveScheduledAcCircle(vin, plan.circle)
         sessionStore.saveScheduledAcDefrost(vin, plan.windshieldDefogging)
+        sessionStore.saveScheduledAcCloseWindows(vin, plan.closeWindows)
+        sessionStore.saveScheduledAcCloseSunshade(vin, plan.closeSunshade)
     }
 
     private fun applyScheduledAirConditioning(plan: ScheduledAcPlan) {
@@ -2220,6 +2233,7 @@ class MainActivity : ComponentActivity() {
                         if (confirmed != null && !confirmed.hasSchedule) {
                             persistScheduledAcPlan(vin, plan)
                             scheduledAcPlan = plan
+                            ScheduledAcScheduler.cancel(applicationContext, vin)
                             Toast.makeText(this@MainActivity, "已取消定时空调", Toast.LENGTH_SHORT).show()
                         } else {
                             Toast.makeText(this@MainActivity, "取消请求已提交，尚未确认取消，请稍后刷新", Toast.LENGTH_LONG).show()
@@ -2248,15 +2262,52 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-                mainHandler.post {
-                    if (success) {
+                if (plan.enabled && success) {
+                    var extraActions = ""
+                    // 第一重保障：保存开启时即刻联动密封车身
+                    if (plan.closeWindows) {
+                        try {
+                            Thread.sleep(1200)
+                            if (session.selectedVin == vin && session.generation == generation) {
+                                api.sendControl(Commands.build("windowClose"), savedPin)
+                                extraActions += " · 已关窗"
+                            }
+                        } catch (e: Exception) {
+                            Log.w("ScheduledAc", "联动关窗失败: ${e.message}")
+                        }
+                    }
+                    if (plan.closeSunshade) {
+                        try {
+                            Thread.sleep(1200)
+                            if (session.selectedVin == vin && session.generation == generation) {
+                                api.sendControl(Commands.build("sunshadeClose"), savedPin)
+                                extraActions += " · 已关遮阳帘"
+                            }
+                        } catch (e: Exception) {
+                            Log.w("ScheduledAc", "联动关遮阳帘失败: ${e.message}")
+                        }
+                    }
+
+                    // 第二重保障：注册系统 AlarmManager 到点精准唤醒兜底
+                    ScheduledAcScheduler.schedule(applicationContext, vin, plan)
+
+                    mainHandler.post {
                         Toast.makeText(
                             this@MainActivity,
-                            if (plan.enabled) "已设置 ${plan.startTime} 定时空调" else "定时空调已关闭",
+                            "已设置 ${plan.startTime} 定时空调$extraActions",
                             Toast.LENGTH_SHORT
                         ).show()
-                    } else {
-                        Toast.makeText(this@MainActivity, if (plan.enabled) "定时空调设置已保存至本地" else "取消定时空调失败，请重试", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    if (!plan.enabled) {
+                        ScheduledAcScheduler.cancel(applicationContext, vin)
+                    }
+                    mainHandler.post {
+                        if (success) {
+                            Toast.makeText(this@MainActivity, "定时空调已关闭", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(this@MainActivity, if (plan.enabled) "定时空调设置已保存至本地" else "取消定时空调失败，请重试", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -3046,12 +3097,12 @@ class MainActivity : ComponentActivity() {
                     original.recycle()
                 }
                 if (!isCurrentBackground(snapshot)) return@submit
-                VehicleImageCache.saveCustomImage(this@MainActivity, vin, processed)
+                VehicleImageCache.saveCustomImage(applicationContext, vin, processed)
+                ControlWidget.refreshAppearance(applicationContext)
                 runOnUiThread {
                     if (!isCurrentBackground(snapshot)) return@runOnUiThread
                     vehicleImageVersion++
                     toast("爱车主图已更新")
-                    ControlWidget.refreshData(this@MainActivity)
                 }
             } catch (e: Exception) {
                 Log.e("LeapVehiclePic", "处理自定义车图失败", e)
@@ -3070,7 +3121,7 @@ class MainActivity : ComponentActivity() {
             if (!isCurrentBackground(snapshot)) return@submit
             VehicleImageCache.removeCustomImage(applicationContext, vin)
             if (!isCurrentBackground(snapshot)) return@submit
-            ControlWidget.refreshData(applicationContext)
+            ControlWidget.refreshAppearance(applicationContext)
             runOnMain {
                 if (!isCurrentBackground(snapshot)) return@runOnMain
                 vehicleImageVersion++

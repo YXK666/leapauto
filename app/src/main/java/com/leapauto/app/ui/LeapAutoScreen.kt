@@ -198,6 +198,7 @@ import com.leapauto.app.ControlFeedback
 import com.leapauto.app.ControlFeedbackDisplayPolicy
 import com.leapauto.app.ControlFeedbackKind
 import com.leapauto.app.EnergyAnalyticsData
+import com.leapauto.app.AppReleaseInfo
 import com.leapauto.app.EnergyAnalyticsState
 import com.leapauto.app.EnergyCompositionPresentation
 import com.leapauto.app.EnergyHomeCardPolicy
@@ -347,6 +348,8 @@ fun LeapAutoScreen(
     onApplyScheduledPreheat: (Boolean, String, String) -> Unit = { _, _, _ -> },
     onApplyScheduledAc: (ScheduledAcPlan) -> Unit = {},
     onLoadScheduledAc: suspend () -> ScheduledAcPlan = { error("预约查询不可用") },
+    openScheduledAcSheet: Boolean = false,
+    onDismissScheduledAcSheet: () -> Unit = {},
     onRefreshChargingSettings: () -> Unit = {},
     onRefreshChargingTelemetry: () -> Unit = {},
     onChargingTelemetryActiveChange: (Boolean) -> Unit = {},
@@ -418,6 +421,13 @@ fun LeapAutoScreen(
     var showHealthyChargingSheet by rememberSaveable { mutableStateOf(false) }
     var showVehicleHealthCheckSheet by rememberSaveable { mutableStateOf(false) }
     var showLogoutConfirmationDialog by rememberSaveable { mutableStateOf(false) }
+    var showScheduledAcSheet by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(openScheduledAcSheet) {
+        if (openScheduledAcSheet) {
+            showScheduledAcSheet = true
+        }
+    }
 
     val destination = when {
         !loggedIn -> ScreenDestination.LOGIN
@@ -681,6 +691,24 @@ fun LeapAutoScreen(
         )
     }
 
+    if (showScheduledAcSheet) {
+        ScheduledAcSheet(
+            onDismissRequest = {
+                showScheduledAcSheet = false
+                onDismissScheduledAcSheet()
+            },
+            initialPlan = scheduledAcPlan,
+            onLoad = onLoadScheduledAc,
+            temperatureRange = 16..32,
+            fanRange = 1..7,
+            onConfirm = { plan ->
+                showScheduledAcSheet = false
+                onDismissScheduledAcSheet()
+                onApplyScheduledAc(plan)
+            }
+        )
+    }
+
     geetestChallenge?.let { challenge ->
         GeetestCaptchaDialog(
             challenge = challenge,
@@ -931,7 +959,8 @@ fun LeapAutoScreen(
                         scheduledAcPlan = scheduledAcPlan,
                         scheduledAcSupported = scheduledAcSupported,
                         onApplyScheduledAc = onApplyScheduledAc,
-                        onLoadScheduledAc = onLoadScheduledAc
+                        onLoadScheduledAc = onLoadScheduledAc,
+                        onOpenScheduledAc = { showScheduledAcSheet = true }
                     )
                 }
 
@@ -1347,7 +1376,8 @@ private fun HomeContent(
     scheduledAcPlan: ScheduledAcPlan = ScheduledAcPlan(),
     scheduledAcSupported: Boolean = false,
     onApplyScheduledAc: (ScheduledAcPlan) -> Unit = {},
-    onLoadScheduledAc: suspend () -> ScheduledAcPlan = { error("预约查询不可用") }
+    onLoadScheduledAc: suspend () -> ScheduledAcPlan = { error("预约查询不可用") },
+    onOpenScheduledAc: () -> Unit = {}
 ) {
     var showAddressNavigationDialog by rememberSaveable { mutableStateOf(false) }
     var showParkingDetailDialog by rememberSaveable { mutableStateOf(false) }
@@ -1386,11 +1416,12 @@ private fun HomeContent(
                 energyCardHeightPx.takeIf { it > 0 }?.toDp()
                     ?: EnergyHomeCardPolicy.MIN_CARD_HEIGHT_DP.dp
             }
+            val homeScrollState = rememberScrollState()
 
             Column(
                 Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(homeScrollState)
                     .padding(bottom = bottomPadding),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -1429,7 +1460,9 @@ private fun HomeContent(
                         onDismissControlFeedback = onDismissControlFeedback,
                         bluetoothState = bluetoothState,
                         bluetoothKeyFeatureEnabled = bluetoothKeyFeatureEnabled,
-                        onOpenBluetoothKey = onOpenBluetoothKey
+                        onOpenBluetoothKey = onOpenBluetoothKey,
+                        scheduledAcPlan = scheduledAcPlan,
+                        onOpenScheduledAc = onOpenScheduledAc
                     )
                 }
 
@@ -1529,14 +1562,17 @@ private fun HomeContent(
                             .fillMaxWidth()
                             .onGloballyPositioned { coordinates ->
                                 val viewportTopPx = homeViewportTopPx
-                                if (energyCardHeightPx == 0 && viewportTopPx != null) {
-                                    energyCardHeightPx = EnergyHomeCardPolicy.calculateViewportFillHeightPx(
+                                if (homeScrollState.value == 0 && viewportTopPx != null) {
+                                    val targetHeightPx = EnergyHomeCardPolicy.calculateViewportFillHeightPx(
                                         viewportHeightPx = with(density) { viewportHeight.roundToPx() },
                                         viewportTopPx = viewportTopPx,
                                         cardTopPx = coordinates.positionInWindow().y.toInt(),
                                         bottomPaddingPx = with(density) { bottomPadding.roundToPx() },
                                         minHeightPx = with(density) { EnergyHomeCardPolicy.MIN_CARD_HEIGHT_DP.dp.roundToPx() }
                                     )
+                                    if (targetHeightPx != energyCardHeightPx) {
+                                        energyCardHeightPx = targetHeightPx
+                                    }
                                 }
                             }
                             .height(dynamicCardHeight)
@@ -1851,18 +1887,7 @@ private fun MyContent(
             }
         }
 
-        // 6. 当前版本信息与检查更新
-        VersionUpdateCard(
-            currentVersion = currentVersion,
-            currentReleaseNotes = currentReleaseNotes,
-            state = versionUpdateState,
-            downloadProgress = downloadUpdateProgress,
-            onCheckForUpdate = onCheckForUpdate,
-            onOpenUpdate = onOpenUpdate,
-            onStartInAppUpdate = onStartInAppUpdate
-        )
-
-        // 6.5 支持作者
+        // 6. 支持作者
         SupportAuthorCard(
             onClick = onOpenAuthorSupport
         )
@@ -2205,8 +2230,16 @@ private fun OpenSourceCodeCard() {
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
+                val currentVersion = AppReleaseInfo.currentVersion
+                val subtitle = buildAnnotatedString {
+                    append("本应用(")
+                    withStyle(SpanStyle(color = MaterialTheme.statusGood, fontWeight = FontWeight.Bold)) {
+                        append("v$currentVersion")
+                    }
+                    append(")代码已开源 · 点击访问 GitHub 仓库")
+                }
                 Text(
-                    "本应用代码已开源 · 点击访问 GitHub 仓库",
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -3151,8 +3184,8 @@ private fun VehicleCustomImageCard(
                         .clip(RoundedCornerShape(6.dp))
                         .clickable { showGuideDialog = true },
                     shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                    color = MaterialTheme.statusGood.copy(alpha = 0.12f),
+                    border = BorderStroke(0.5.dp, MaterialTheme.statusGood.copy(alpha = 0.45f))
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
@@ -3162,14 +3195,14 @@ private fun VehicleCustomImageCard(
                         Icon(
                             painter = painterResource(R.drawable.ic_phosphor_info_circle),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.statusGood,
                             modifier = Modifier.size(12.dp)
                         )
                         Text(
                             "AI 生图指南",
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.statusGood
                         )
                     }
                 }
@@ -3216,7 +3249,7 @@ private fun VehicleCustomImageGuideDialog(
     val context = LocalContext.current
     val universalPromptCn = "一艘宏伟的现代化航空母舰/东风导弹发射车/超级跑车（可替换您想生成的任意物品），主体朝向侧前方45度角（3/4侧透视视角），完整位于画面正中央，四周留出15%安全留白，无任何局部被裁切。影棚商业级布光，金属质感细腻，反光真实，细节极其丰富。背景必须为纯白单一纯色实心背景，无渐变、无阴影、无多余杂物、无地平线、无倒影。图片尺寸：1200 × 522 像素，宽高比 2.3:1。"
 
-    val highlightColor = MaterialTheme.colorScheme.primary
+    val highlightColor = MaterialTheme.statusGood
     val promptAnnotated = remember(highlightColor) {
         buildAnnotatedString {
             append("一艘宏伟的现代化航空母舰/东风导弹发射车/超级跑车")
@@ -3253,7 +3286,7 @@ private fun VehicleCustomImageGuideDialog(
                 Icon(
                     painter = painterResource(R.drawable.ic_phosphor_info_circle),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.statusGood,
                     modifier = Modifier.size(22.dp)
                 )
                 Text(
@@ -3280,8 +3313,8 @@ private fun VehicleCustomImageGuideDialog(
 
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        color = MaterialTheme.glassInsetSurface,
+                        border = BorderStroke(0.5.dp, MaterialTheme.statusGood.copy(alpha = 0.35f))
                     ) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
@@ -3300,10 +3333,16 @@ private fun VehicleCustomImageGuideDialog(
                                     Icon(
                                         painter = painterResource(R.drawable.ic_phosphor_copy),
                                         contentDescription = null,
+                                        tint = MaterialTheme.statusGood,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(Modifier.width(4.dp))
-                                    Text("复制提示词", style = MaterialTheme.typography.labelSmall)
+                                    Text(
+                                        "复制提示词",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.statusGood
+                                    )
                                 }
                             }
                         }
@@ -3554,7 +3593,7 @@ private fun WidgetBackgroundStyleCard(
                 Text(
                     text = currentLabel,
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.statusGood,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -3568,9 +3607,9 @@ private fun WidgetBackgroundStyleCard(
                         selected = isSelected,
                         icon = {},
                         colors = SegmentedButtonDefaults.colors(
-                            activeContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                            activeContentColor = MaterialTheme.colorScheme.primary,
-                            activeBorderColor = MaterialTheme.colorScheme.primary,
+                            activeContainerColor = MaterialTheme.statusGood.copy(alpha = 0.14f),
+                            activeContentColor = MaterialTheme.statusGood,
+                            activeBorderColor = MaterialTheme.statusGood.copy(alpha = 0.60f),
                             inactiveContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.50f),
                             inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             inactiveBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.60f)
@@ -3631,7 +3670,7 @@ private fun WidgetOpacityCard(opacity: Int, onOpacityChange: (Int) -> Unit) {
                 Text(
                     options.firstOrNull { it.first == opacity }?.second ?: "不透明",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.statusGood,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -3644,9 +3683,9 @@ private fun WidgetOpacityCard(opacity: Int, onOpacityChange: (Int) -> Unit) {
                         selected = isSelected,
                         icon = {},
                         colors = SegmentedButtonDefaults.colors(
-                            activeContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                            activeContentColor = MaterialTheme.colorScheme.primary,
-                            activeBorderColor = MaterialTheme.colorScheme.primary,
+                            activeContainerColor = MaterialTheme.statusGood.copy(alpha = 0.14f),
+                            activeContentColor = MaterialTheme.statusGood,
+                            activeBorderColor = MaterialTheme.statusGood.copy(alpha = 0.60f),
                             inactiveContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.50f),
                             inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             inactiveBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.60f)
@@ -4205,7 +4244,9 @@ fun VehicleHero(
     onDismissControlFeedback: () -> Unit = {},
     bluetoothState: BleConnectionState? = null,
     bluetoothKeyFeatureEnabled: Boolean = false,
-    onOpenBluetoothKey: (() -> Unit)? = null
+    onOpenBluetoothKey: (() -> Unit)? = null,
+    scheduledAcPlan: ScheduledAcPlan = ScheduledAcPlan(),
+    onOpenScheduledAc: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val remoteBitmap = remember(vehicleVin, vehicleImageVersion) {
@@ -5168,6 +5209,8 @@ fun VehicleHero(
                     activeControlCommand = activeControlCommand,
                     embedded = true,
                     onOpenHealthCheck = onOpenHealthCheck,
+                    scheduledAcPlan = scheduledAcPlan,
+                    onOpenScheduledAc = onOpenScheduledAc,
                     // Quick controls sit on the page-colored lower horizon, not the upper sky.
                     isHeroDark = isDark
                 )
@@ -6185,7 +6228,9 @@ private fun QuickVehicleActions(
     seamless: Boolean = false,
     embedded: Boolean = false,
     onOpenHealthCheck: () -> Unit = {},
-    isHeroDark: Boolean = false
+    isHeroDark: Boolean = false,
+    scheduledAcPlan: ScheduledAcPlan = ScheduledAcPlan(),
+    onOpenScheduledAc: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val sessionStore = remember(context) { SessionStore(context) }
@@ -6238,6 +6283,7 @@ private fun QuickVehicleActions(
             Cmd("trunk", "开后备箱", R.drawable.ic_phosphor_trunk_open),
             *frunkCommands.toTypedArray(),
             *extraCommands.toTypedArray(),
+            Cmd("scheduledAc", "定时空调", R.drawable.ic_phosphor_alarm),
             Cmd("batteryPreheat", "电池预热", R.drawable.ic_phosphor_battery_charging),
             Cmd("sentry", "哨兵模式", R.drawable.ic_sentry),
             Cmd("diagnostics", "诊断", R.drawable.ic_quick_diagnostics)
@@ -6567,6 +6613,27 @@ private fun QuickVehicleActions(
                                                     }
                                                 }
                                             }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else if (command.name == "scheduledAc") {
+                            val isAcActive = scheduledAcPlan.enabled
+                            val activeColor = MaterialTheme.statusGood
+                            QuickVehicleButton(
+                                label = "定时空调",
+                                iconRes = command.iconRes,
+                                warning = false,
+                                inProgress = false,
+                                isSensitive = false,
+                                isHeroDark = isHeroDark,
+                                iconTint = if (isAcActive) activeColor else normalActionContentColor,
+                                labelTint = normalActionLabelColor,
+                                onClick = {
+                                    handleQuickActionClick {
+                                        if (!editing) {
+                                            onOpenScheduledAc()
                                         }
                                     }
                                 },
@@ -10179,13 +10246,9 @@ fun ClimateControlBottomSheet(
         else -> R.drawable.ic_phosphor_fan
     }
     val activeAcColor = when {
-        isDefrostActive -> MaterialTheme.colorScheme.primary
-        activePresetName == ClimatePresetAction.QUICK_COOL.name -> MaterialTheme.colorScheme.primary
         activePresetName == ClimatePresetAction.QUICK_HEAT.name -> MaterialTheme.statusWarn
-        climateTone == ClimateTemperatureTone.COOLING -> MaterialTheme.colorScheme.primary
         climateTone == ClimateTemperatureTone.HEATING -> MaterialTheme.statusWarn
-        climateTone == ClimateTemperatureTone.VENTILATION -> MaterialTheme.statusGood
-        else -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.statusGood
     }
     val currentAcColor = if (isAcOn) activeAcColor else MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -10262,10 +10325,10 @@ fun ClimateControlBottomSheet(
                 // 一键开启/关闭快捷触控胶囊
                 Surface(
                     shape = CircleShape,
-                    color = if (isAcOn) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.glassInsetSurface,
+                    color = if (isAcOn) MaterialTheme.statusGood.copy(alpha = 0.15f) else MaterialTheme.glassInsetSurface,
                     border = BorderStroke(
                         0.8.dp,
-                        if (isAcOn) MaterialTheme.colorScheme.primary.copy(alpha = 0.40f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f)
+                        if (isAcOn) MaterialTheme.statusGood.copy(alpha = 0.50f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f)
                     ),
                     modifier = Modifier
                         .clip(CircleShape)
@@ -10282,7 +10345,7 @@ fun ClimateControlBottomSheet(
                         text = if (isAcOn) "关闭" else "开启",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = if (isAcOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        color = if (isAcOn) MaterialTheme.statusGood else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
                     )
                 }
@@ -10566,7 +10629,7 @@ fun ClimateControlBottomSheet(
                     icon = R.drawable.ic_phosphor_arrow_clockwise,
                     label = if (isInner) "内循环" else "外循环",
                     isActive = isInner,
-                    activeColor = MaterialTheme.colorScheme.primary,
+                    activeColor = MaterialTheme.statusGood,
                     enabled = actionsEnabled,
                     onClick = {
                         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
@@ -10615,7 +10678,7 @@ fun ClimateControlBottomSheet(
                         icon = R.drawable.ic_phosphor_alarm,
                         label = "定时空调",
                         isActive = scheduledAcPlan.enabled,
-                        activeColor = MaterialTheme.colorScheme.primary,
+                        activeColor = MaterialTheme.statusGood,
                         enabled = actionsEnabled,
                         onClick = {
                             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
@@ -10635,7 +10698,12 @@ fun ClimateControlBottomSheet(
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("风量", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("$editedWindLevel 挡", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "$editedWindLevel 挡",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (actionsEnabled) MaterialTheme.statusGood else MaterialTheme.colorScheme.onSurface
+                        )
                     }
                     if (fanRange.first < fanRange.last) {
                         ThinClimateSlider(
@@ -10719,7 +10787,7 @@ fun ClimateControlBottomSheet(
                                     if (editedOutletName == AirOutlet.ALL.name) "全车出风" else "前风挡出风",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.statusGood
                                 )
                             }
                             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -10735,7 +10803,15 @@ fun ClimateControlBottomSheet(
                                     },
                                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                                     icon = {},
-                                    label = { Text("全车出风", style = MaterialTheme.typography.labelSmall) }
+                                    colors = SegmentedButtonDefaults.colors(
+                                        activeContainerColor = MaterialTheme.statusGood.copy(alpha = 0.14f),
+                                        activeContentColor = MaterialTheme.statusGood,
+                                        activeBorderColor = MaterialTheme.statusGood.copy(alpha = 0.60f),
+                                        inactiveContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.50f),
+                                        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        inactiveBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.60f)
+                                    ),
+                                    label = { Text("全车出风", style = MaterialTheme.typography.labelSmall, fontWeight = if (editedOutletName == AirOutlet.ALL.name) FontWeight.Bold else FontWeight.Normal) }
                                 )
                                 SegmentedButton(
                                     selected = editedOutletName == AirOutlet.WINDSHIELD.name,
@@ -10749,7 +10825,15 @@ fun ClimateControlBottomSheet(
                                     },
                                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                                     icon = {},
-                                    label = { Text("前风挡出风", style = MaterialTheme.typography.labelSmall) }
+                                    colors = SegmentedButtonDefaults.colors(
+                                        activeContainerColor = MaterialTheme.statusGood.copy(alpha = 0.14f),
+                                        activeContentColor = MaterialTheme.statusGood,
+                                        activeBorderColor = MaterialTheme.statusGood.copy(alpha = 0.60f),
+                                        inactiveContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.50f),
+                                        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        inactiveBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.60f)
+                                    ),
+                                    label = { Text("前风挡出风", style = MaterialTheme.typography.labelSmall, fontWeight = if (editedOutletName == AirOutlet.WINDSHIELD.name) FontWeight.Bold else FontWeight.Normal) }
                                 )
                             }
                         }
@@ -11350,7 +11434,7 @@ fun ThinClimateSlider(
     val thumbRadiusPx = with(LocalDensity.current) { 10.dp.toPx() }
     val total = valueRange.endInclusive - valueRange.start
     val fraction = if (total <= 0f) 0f else ((value - valueRange.start) / total).coerceIn(0f, 1f)
-    val enabledColor = MaterialTheme.colorScheme.primary
+    val enabledColor = MaterialTheme.statusGood
     val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
     val trackColor = if (enabled) enabledColor else disabledColor
     val trackBackground = if (enabled) {
