@@ -47,6 +47,12 @@ class BleKeyRuntime private constructor(context: Context) {
     private var restoreAttempted = false
     private var blockedGeneration: Long? = null
     private var inCarMediaActive = false
+    private var disableFeatureRunnable: Runnable? = null
+
+    private fun cancelDisableFeature() {
+        disableFeatureRunnable?.let(handler::removeCallbacks)
+        disableFeatureRunnable = null
+    }
 
     fun setInCarMediaActive(active: Boolean) {
         inCarMediaActive = active
@@ -135,6 +141,7 @@ class BleKeyRuntime private constructor(context: Context) {
     }
 
     fun startBackground() {
+        cancelDisableFeature()
         check(foreground && validSession())
         check(controller.hasPermissions()) { "请先开启附近设备权限" }
         check(!sessions.loadOpPassword().isNullOrBlank()) { "请先设置操控密码" }
@@ -147,6 +154,7 @@ class BleKeyRuntime private constructor(context: Context) {
     }
 
     fun restoreBackground() {
+        cancelDisableFeature()
         if (restoreAttempted || !foreground) return
         restoreAttempted = true
         if (!runningValue.value && keyValue.value?.needsBackground == true) startBackground()
@@ -182,6 +190,74 @@ class BleKeyRuntime private constructor(context: Context) {
         stopping = false
     }
 
+    fun enableFeature() {
+        cancelDisableFeature()
+        val bound = keyValue.value
+        val current = identity
+        if (bound != null && current != null && validSession() && !bound.desired.enabled) {
+            val enabledConfig = bound.desired.copy(enabled = true)
+            val requested = bound.request(enabledConfig, current.generation)
+            keys.save(requested)
+            keyValue.value = requested
+            if (runningValue.value && controller.canConfigure && !syncing) {
+                synchronizeConfiguration()
+            }
+        }
+    }
+
+    fun disableFeature(onComplete: () -> Unit = {}) {
+        cancelDisableFeature()
+        val bound = keyValue.value
+        val current = identity
+        if (bound != null && current != null && validSession() &&
+            connectionValue.value.phase == BleConnectionPhase.READY && controller.canConfigure && !syncing
+        ) {
+            val disabledConfig = bound.desired.copy(
+                enabled = false,
+                autoUnlock = false,
+                autoLock = false
+            )
+            val requested = bound.request(disabledConfig, current.generation)
+            keys.save(requested)
+            keyValue.value = requested
+            syncing = true
+            val isLeap3 = currentCarType.orEmpty().uppercase().let { it.contains("C16") || it.contains("C10") }
+            val configureMinor = if (isLeap3 && (bound.device.protocolMinor ?: 0) < BleKeyProtocol.LEAP3_PROTOCOL_MINOR) {
+                BleKeyProtocol.LEAP3_PROTOCOL_MINOR
+            } else {
+                bound.device.protocolMinor ?: BleKeyProtocol.defaultProtocolMinor(currentCarType)
+            }
+            var finished = false
+            val finishAction = Runnable {
+                if (!finished) {
+                    finished = true
+                    syncing = false
+                    disableFeatureRunnable = null
+                    stopBackground()
+                    onComplete()
+                }
+            }
+            disableFeatureRunnable = finishAction
+            controller.configure(disabledConfig, configureMinor) {
+                handler.post(finishAction)
+            }
+            handler.postDelayed(finishAction, 2_500L)
+        } else {
+            if (bound != null && current != null && validSession()) {
+                val disabledConfig = bound.desired.copy(
+                    enabled = false,
+                    autoUnlock = false,
+                    autoLock = false
+                )
+                val requested = bound.request(disabledConfig, current.generation)
+                keys.save(requested)
+                keyValue.value = requested
+            }
+            stopBackground()
+            onComplete()
+        }
+    }
+
     fun endSession() {
         stopBackground()
         val suspended = keys.suspendAll()
@@ -204,10 +280,6 @@ class BleKeyRuntime private constructor(context: Context) {
 
     private fun reconnectManaged() {
         if (!runningValue.value) return
-        // 关键保护：若当前连接已经处于就绪待命 (READY) 状态，严禁自杀重连掐断已活跃的连接
-        if (controller.state.phase == BleConnectionPhase.READY || controller.state.phase == BleConnectionPhase.CONFIGURING) {
-            return
-        }
         if (!validSession() || !controller.hasPermissions() || sessions.loadOpPassword().isNullOrBlank()) {
             stopBackground()
             return
@@ -218,12 +290,16 @@ class BleKeyRuntime private constructor(context: Context) {
             stopBackground()
             return
         }
+        if (controller.isMaintainingAutoConnect || controller.state.isBusy ||
+            controller.state.phase == BleConnectionPhase.READY) return
         cancelRetry()
         syncing = false
-        // Disconnect notifications must not schedule a second concurrent reconnect.
-        stopping = true
-        controller.disconnect()
-        stopping = false
+        if (!controller.isMaintainingAutoConnect) {
+            // Disconnect notifications must not schedule a second concurrent reconnect.
+            stopping = true
+            controller.disconnect()
+            stopping = false
+        }
         val current = requireNotNull(identity)
         recordTarget(bound.device, profiles.load(current))
         val credentialScope = reconnectScope(current, certificate)
@@ -246,8 +322,8 @@ class BleKeyRuntime private constructor(context: Context) {
         } else {
             bound.desired
         }
-        // 见车才连：先通过低功耗单次定向探测（3秒）确认车辆在附近，杜绝在楼上/远距离时无脑强连耗电与超时报错
-        probeTargetAndConnect(bound, targetDevice, certificate, targetDesired, credentialScope, current)
+        // Register the trusted address once; Android manages reconnection while this GATT is retained.
+        connectDirect(targetDevice, certificate, bound.accountId, targetDesired, credentialScope, current)
     }
 
     @SuppressLint("MissingPermission")
@@ -288,6 +364,9 @@ class BleKeyRuntime private constructor(context: Context) {
                     cancelProbe()
                     consecutiveMissCount = 0
                     val rssi = result.rssi
+                    if (controller.state.phase == BleConnectionPhase.READY || controller.state.phase == BleConnectionPhase.CONFIGURING) {
+                        return
+                    }
                     val effectiveDevice = if (!address.equals(bound.device.address, ignoreCase = true)) {
                         targetDevice.copy(address = address)
                     } else {
@@ -299,7 +378,15 @@ class BleKeyRuntime private constructor(context: Context) {
             }
             override fun onScanFailed(errorCode: Int) {
                 cancelProbe()
-                connectDirect(targetDevice, certificate, bound.accountId, targetDesired, credentialScope, current)
+                val failReason = controller.scanFailureReason(errorCode)
+                controller.recordDiagnostic(BleDiagnosticEvent.SCAN_FAILED, errorCode, extra = failReason)
+                if (errorCode == 6) {
+                    consecutiveMissCount = maxOf(consecutiveMissCount, 3)
+                    controller.updateStateMessage("系统扫描限流中，30秒后恢复待命")
+                    scheduleProbeRetry(30_000L)
+                } else {
+                    connectDirect(targetDevice, certificate, bound.accountId, targetDesired, credentialScope, current)
+                }
             }
         }
         probeCallback = callback
@@ -326,7 +413,7 @@ class BleKeyRuntime private constructor(context: Context) {
                     }
                     controller.recordDiagnostic(BleDiagnosticEvent.PROBE_MISSED, extra = extraDesc)
                     controller.updateStateMessage(if (foreground) "未在车辆附近 (前台待命中)" else "未在车辆附近 (后台待命中)")
-                    if (shouldAttemptDirectFallback) {
+                    if (shouldAttemptDirectFallback && !controller.isMaintainingAutoConnect) {
                         connectDirect(targetDevice, certificate, bound.accountId, targetDesired, credentialScope, current)
                     } else {
                         scheduleProbeRetry()
@@ -358,9 +445,9 @@ class BleKeyRuntime private constructor(context: Context) {
         ) { identity == current && validSession() }
     }
 
-    private fun scheduleProbeRetry() {
+    private fun scheduleProbeRetry(customDelayMs: Long? = null) {
         if (retry != null || !runningValue.value) return
-        val delayMs = BleReconnectPolicy.probeDelayMillis(foreground, inCarMediaActive, consecutiveMissCount)
+        val delayMs = customDelayMs ?: BleReconnectPolicy.probeDelayMillis(foreground, inCarMediaActive, consecutiveMissCount)
         retry = Runnable {
             retry = null
             reconnectManaged()
@@ -381,7 +468,7 @@ class BleKeyRuntime private constructor(context: Context) {
         } else if (state.phase == BleConnectionPhase.IDLE || state.phase == BleConnectionPhase.FAILED) {
             if (state.phase == BleConnectionPhase.FAILED) candidate = null
             syncing = false
-            if (runningValue.value && !stopping) scheduleReconnect()
+            if (runningValue.value && !stopping && !controller.isMaintainingAutoConnect) scheduleReconnect()
         }
     }
 

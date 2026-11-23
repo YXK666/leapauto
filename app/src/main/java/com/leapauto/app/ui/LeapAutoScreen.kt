@@ -116,6 +116,7 @@ import android.graphics.Bitmap
 import com.leapauto.app.ChassisParkingPhoto
 import com.leapauto.app.ParkingPhotoLoadState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -278,6 +279,12 @@ private enum class ScreenDestination(val navigationOrder: Int) {
     LOCATION_DETAIL(2),
     CLIMATE_CONTROL(2),
     SCHEDULED_AC(2),
+    // [FEATURE: TRIP_LOG] Start
+    TRIP_HISTORY(2),
+    // [FEATURE: TRIP_LOG] End
+    // [FEATURE: CHARGE_HISTORY] Start
+    CHARGE_HISTORY(2),
+    // [FEATURE: CHARGE_HISTORY] End
     ACCOUNT(3),
     AUTHOR_SUPPORT(4)
 }
@@ -425,6 +432,12 @@ fun LeapAutoScreen(
     var showLogoutConfirmationDialog by rememberSaveable { mutableStateOf(false) }
     var showScheduledAcScreen by rememberSaveable { mutableStateOf(false) }
     var scheduledAcReturnToClimate by rememberSaveable { mutableStateOf(false) }
+    // [FEATURE: TRIP_LOG] Start
+    var showTripHistoryScreen by rememberSaveable { mutableStateOf(false) }
+    // [FEATURE: TRIP_LOG] End
+    // [FEATURE: CHARGE_HISTORY] Start
+    var showChargeHistoryScreen by rememberSaveable { mutableStateOf(false) }
+    // [FEATURE: CHARGE_HISTORY] End
 
     LaunchedEffect(openScheduledAcSheet) {
         if (openScheduledAcSheet) {
@@ -439,6 +452,12 @@ fun LeapAutoScreen(
         showScheduledAcScreen && selectedTab == MainNavigationTabs.VEHICLE -> ScreenDestination.SCHEDULED_AC
         showClimateControl && selectedTab == MainNavigationTabs.VEHICLE -> ScreenDestination.CLIMATE_CONTROL
         showVehicleLocation && selectedTab == MainNavigationTabs.VEHICLE -> ScreenDestination.LOCATION_DETAIL
+        // [FEATURE: TRIP_LOG] Start
+        showTripHistoryScreen && selectedTab == MainNavigationTabs.VEHICLE -> ScreenDestination.TRIP_HISTORY
+        // [FEATURE: TRIP_LOG] End
+        // [FEATURE: CHARGE_HISTORY] Start
+        showChargeHistoryScreen && selectedTab == MainNavigationTabs.VEHICLE -> ScreenDestination.CHARGE_HISTORY
+        // [FEATURE: CHARGE_HISTORY] End
         selectedTab == MainNavigationTabs.ACCOUNT -> ScreenDestination.ACCOUNT
         else -> ScreenDestination.HOME
     }
@@ -447,6 +466,12 @@ fun LeapAutoScreen(
         loggedIn && showScheduledAcScreen -> "定时空调"
         loggedIn && showVehicleLocation -> "车辆位置"
         loggedIn && showClimateControl -> "空调"
+        // [FEATURE: TRIP_LOG] Start
+        loggedIn && showTripHistoryScreen -> "行驶记录"
+        // [FEATURE: TRIP_LOG] End
+        // [FEATURE: CHARGE_HISTORY] Start
+        loggedIn && showChargeHistoryScreen -> "充电记录"
+        // [FEATURE: CHARGE_HISTORY] End
         loggedIn -> when (selectedTab) {
             MainNavigationTabs.ACCOUNT -> "设置"
             else -> "爱车"
@@ -463,6 +488,12 @@ fun LeapAutoScreen(
         showVehicleLocation ||
         showClimateControl ||
         showScheduledAcScreen ||
+        // [FEATURE: TRIP_LOG] Start
+        showTripHistoryScreen ||
+        // [FEATURE: TRIP_LOG] End
+        // [FEATURE: CHARGE_HISTORY] Start
+        showChargeHistoryScreen ||
+        // [FEATURE: CHARGE_HISTORY] End
         showAuthorSupportScreen
     val updatePromptRelease = (versionUpdateState as? VersionUpdateState.UpdateAvailable)?.latestRelease
     val shouldShowVersionUpdatePrompt = updatePromptRelease != null &&
@@ -491,6 +522,14 @@ fun LeapAutoScreen(
             showClimateControl = false
         } else if (showVehicleLocation) {
             showVehicleLocation = false
+        // [FEATURE: TRIP_LOG] Start
+        } else if (showTripHistoryScreen) {
+            showTripHistoryScreen = false
+        // [FEATURE: TRIP_LOG] End
+        // [FEATURE: CHARGE_HISTORY] Start
+        } else if (showChargeHistoryScreen) {
+            showChargeHistoryScreen = false
+        // [FEATURE: CHARGE_HISTORY] End
         } else if (selectedTab == MainNavigationTabs.ACCOUNT) {
             selectedTab = MainNavigationTabs.VEHICLE
         }
@@ -508,6 +547,12 @@ fun LeapAutoScreen(
             showClimateControl = false
             showScheduledAcScreen = false
             showAuthorSupportScreen = false
+            // [FEATURE: TRIP_LOG] Start
+            showTripHistoryScreen = false
+            // [FEATURE: TRIP_LOG] End
+            // [FEATURE: CHARGE_HISTORY] Start
+            showChargeHistoryScreen = false
+            // [FEATURE: CHARGE_HISTORY] End
         }
         onAutoRefreshActiveChange(loggedIn && selectedTab == MainNavigationTabs.VEHICLE)
     }
@@ -518,6 +563,12 @@ fun LeapAutoScreen(
             showVehicleLocation = false
             showClimateControl = false
             showScheduledAcScreen = false
+            // [FEATURE: TRIP_LOG] Start
+            showTripHistoryScreen = false
+            // [FEATURE: TRIP_LOG] End
+            // [FEATURE: CHARGE_HISTORY] Start
+            showChargeHistoryScreen = false
+            // [FEATURE: CHARGE_HISTORY] End
             onOpenBluetoothKey?.invoke()
         }
     }
@@ -685,7 +736,13 @@ fun LeapAutoScreen(
             onRefreshTelemetry = onRefreshChargingTelemetry,
             onTelemetryActiveChange = onChargingTelemetryActiveChange,
             controlFeedback = chargingControlFeedback,
-            controlInProgress = chargingControlInProgress
+            controlInProgress = chargingControlInProgress,
+            // [FEATURE: CHARGE_HISTORY] Start
+            onOpenChargeHistory = {
+                showHealthyChargingSheet = false
+                showChargeHistoryScreen = true
+            }
+            // [FEATURE: CHARGE_HISTORY] End
         )
     }
 
@@ -809,6 +866,8 @@ fun LeapAutoScreen(
                 if (destination != ScreenDestination.HOME && destination != ScreenDestination.LOGIN) {
                     TopAppBar(
                         navigationIcon = if (showAuthorSupportScreen || showVehicleLocation || showClimateControl || showScheduledAcScreen ||
+                            showTripHistoryScreen ||
+                            showChargeHistoryScreen ||
                             selectedTab == MainNavigationTabs.ACCOUNT
                         ) {
                             {
@@ -961,7 +1020,12 @@ fun LeapAutoScreen(
                         onOpenScheduledAc = {
                             showScheduledAcScreen = true
                             scheduledAcReturnToClimate = false
+                        },
+                        // [FEATURE: TRIP_LOG] Start
+                        onOpenTripHistory = {
+                            showTripHistoryScreen = true
                         }
+                        // [FEATURE: TRIP_LOG] End
                     )
                 }
 
@@ -1025,6 +1089,23 @@ fun LeapAutoScreen(
                                 }
                             )
                         }
+                        // [FEATURE: TRIP_LOG] Start
+                        ScreenDestination.TRIP_HISTORY -> {
+                            com.leapauto.app.ui.TripHistoryScreen(
+                                vin = vehicleVin,
+                                carType = vehicleDisplayModel.ifBlank { vehicleModel },
+                                onBack = { showTripHistoryScreen = false }
+                            )
+                        }
+                        // [FEATURE: TRIP_LOG] End
+                        // [FEATURE: CHARGE_HISTORY] Start
+                        ScreenDestination.CHARGE_HISTORY -> {
+                            com.leapauto.app.ui.ChargeHistoryScreen(
+                                vin = vehicleVin,
+                                onBack = { showChargeHistoryScreen = false }
+                            )
+                        }
+                        // [FEATURE: CHARGE_HISTORY] End
                         ScreenDestination.ACCOUNT -> {
                             MyContent(
                                 openAmapConfiguration = openAmapConfiguration,
@@ -1394,7 +1475,10 @@ private fun HomeContent(
     scheduledAcSupported: Boolean = false,
     onApplyScheduledAc: (ScheduledAcPlan) -> Unit = {},
     onLoadScheduledAc: suspend () -> ScheduledAcPlan = { error("预约查询不可用") },
-    onOpenScheduledAc: () -> Unit = {}
+    onOpenScheduledAc: () -> Unit = {},
+    // [FEATURE: TRIP_LOG] Start
+    onOpenTripHistory: () -> Unit = {}
+    // [FEATURE: TRIP_LOG] End
 ) {
     var showAddressNavigationDialog by rememberSaveable { mutableStateOf(false) }
     var showParkingDetailDialog by rememberSaveable { mutableStateOf(false) }
@@ -1574,6 +1658,9 @@ private fun HomeContent(
                         vehicleTotalMileage = status?.totalMileage,
                         vehicleModel = vehicleDisplayModel.ifBlank { vehicleModel },
                         seamless = false,
+                        // [FEATURE: TRIP_LOG] Start
+                        onOpenTripHistory = onOpenTripHistory,
+                        // [FEATURE: TRIP_LOG] End
                         modifier = Modifier
                             .fillMaxWidth()
                             .onGloballyPositioned { coordinates ->
@@ -1621,6 +1708,33 @@ private fun HomeContent(
             fridgeStatus = status.fridgeStatus,
             onApplyFridgeControl = onFridgeControl,
             busy = activeControlCommand?.startsWith("fridge") == true
+        )
+    }
+}
+
+@Composable
+private fun SettingsSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, top = 8.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 3.dp, height = 12.dp)
+                .clip(RoundedCornerShape(1.5.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.65f))
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -1722,8 +1836,8 @@ private fun MyContent(
         Modifier
             .fillMaxSize()
             .verticalScroll(accountScrollState)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (availableVehicles.size > 1) {
             Surface(
@@ -1777,6 +1891,9 @@ private fun MyContent(
             }
         }
 
+        // 分组 1: 爱车与个性化
+        SettingsSectionHeader("爱车与个性化")
+
         // 1. 爱车主图定制
         VehicleCustomImageCard(
             vehicleVin = vehicleVin,
@@ -1792,29 +1909,24 @@ private fun MyContent(
             onOpenThemeDialog = { showProfileThemeDialog = true }
         )
 
-        // 3. 4X2桌面小组件
-        Widget4x2ActionsCard(
+        // 分组 2: 桌面生态与快捷车控
+        SettingsSectionHeader("桌面与快捷控制")
+
+        // 3. 桌面插件与控制中心快捷配置 (合并折叠卡片)
+        ExternalQuickControlsConfigCard(
             actions = widget4x2Actions,
             onActionsChange = onWidget4x2ActionsChange
         )
 
-        // 4. 下拉控制中心快捷开关
-        QuickSettingsTileCard()
-
-        // 5. 小组件背景风格与透明度 (仅当选用「层峦叠嶂」原厂主题时生效与呈现；其余定制主题由全套专属皮肤接管)
+        // 4. 小组件外观风格与透明度配置 (仅当选用「层峦叠嶂」原厂主题时生效与呈现)
         if (selectedThemeId == ThemeManager.ORIGINAL_SKYBOX_THEME_ID) {
-            WidgetBackgroundStyleCard(
+            WidgetAppearanceConfigCard(
                 style = widgetBackgroundStyle,
-                onStyleChange = onWidgetBackgroundStyleChange
+                onStyleChange = onWidgetBackgroundStyleChange,
+                opacity = widgetOpacity,
+                onOpacityChange = onWidgetOpacityChange,
+                showOpacity = widgetBackgroundStyle == SessionStore.WIDGET_BG_STYLE_MICROCRYSTAL
             )
-
-            // 5.1 小组件透明度 (仅当用户选择经典微晶皮肤时显示)
-            if (widgetBackgroundStyle == SessionStore.WIDGET_BG_STYLE_MICROCRYSTAL) {
-                WidgetOpacityCard(
-                    opacity = widgetOpacity,
-                    onOpacityChange = onWidgetOpacityChange
-                )
-            }
         }
 
         // 5. 高德地图 Web Key 配置
@@ -1884,6 +1996,29 @@ private fun MyContent(
             }
         }
 
+        // 分组 3: 数据互联与车辆服务
+        SettingsSectionHeader("数据与互联服务")
+
+        // 5. 高德地图 Web Key 配置
+        AmapWebKeyConfigCard(
+            initiallyExpanded = openAmapConfiguration,
+            onConfigurationChanged = onAmapConfigurationChanged,
+            modifier = Modifier.onGloballyPositioned {
+                amapConfigurationTop = it.positionInParent().y.toInt().coerceAtLeast(0)
+            }
+        )
+
+        // [FEATURE: TRIP_LOG] Start
+        // 5.5 行程记账设置 (电池容量与充电电价)
+        TripLogConfigCard(
+            vin = vehicleVin,
+            vehicleModel = vehicleModel
+        )
+        // [FEATURE: TRIP_LOG] End
+
+        // 分组 4: 软件与关于
+        SettingsSectionHeader("软件与关于")
+
         // 6. 当前版本信息与检查更新
         VersionUpdateCard(
             currentVersion = currentVersion,
@@ -1903,6 +2038,9 @@ private fun MyContent(
         // 7. 开源代码仓库
         OpenSourceCodeCard()
 
+        Spacer(Modifier.height(4.dp))
+
+        // 8. 退出当前账号
         LogoutButtonCard(onClick = onLogout)
 
         Spacer(Modifier.height(16.dp))
@@ -2162,6 +2300,7 @@ private fun LogoutButtonCard(onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .settingsGlassCard(auraColor = MaterialTheme.colorScheme.error.copy(alpha = 0.08f)),
         shape = RoundedCornerShape(16.dp),
@@ -2674,7 +2813,7 @@ private fun VersionUpdateCard(
                     )
                 }
                 Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         "当前版本 v$currentVersion",
                         style = MaterialTheme.typography.titleMedium,
@@ -2853,7 +2992,7 @@ private fun AmapWebKeyConfigCard(
                     )
                 }
                 Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         "高德 Web 服务配置",
                         style = MaterialTheme.typography.titleMedium,
@@ -3039,6 +3178,524 @@ private fun AmapWebKeyConfigCard(
     }
 }
 
+// [FEATURE: TRIP_LOG] Start
+@Composable
+private fun TripLogConfigCard(
+    vin: String,
+    vehicleModel: String = "",
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val store = remember(context) { com.leapauto.app.trip.TripRecordStore(context) }
+    val isReev = remember(vehicleModel) { com.leapauto.app.trip.VehicleBatteryCapacityTable.isReev(vehicleModel) }
+    var batteryCapacity by remember(vin, vehicleModel) {
+        mutableDoubleStateOf(store.loadBatteryCapacityKwh(vin, vehicleModel))
+    }
+    var electricityPrice by remember {
+        mutableDoubleStateOf(store.loadElectricityPrice())
+    }
+    var fuelTankCapacity by remember(vin, vehicleModel) {
+        mutableDoubleStateOf(store.loadFuelTankCapacityLiters(vin, vehicleModel))
+    }
+    var fuelPrice by remember {
+        mutableDoubleStateOf(store.loadFuelPrice())
+    }
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        animationSpec = tween(220),
+        label = "tripConfigCaretRotation"
+    )
+    var showBatteryDialog by remember { mutableStateOf(false) }
+    var showPriceDialog by remember { mutableStateOf(false) }
+    var showFuelTankDialog by remember { mutableStateOf(false) }
+    var showFuelPriceDialog by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .settingsGlassCard(),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = glassCardBorder(),
+        shadowElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // 头部标题行（点击展开/收起）
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_phosphor_battery_charging),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        if (isReev) "油电容量与能耗单价配置" else "电池容量和电费单价配置",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        if (isReev) {
+                            "电池 ${"%.1f".format(batteryCapacity)} kWh · 油箱 ${"%.0f".format(fuelTankCapacity)}L · 电价 ¥${"%.2f".format(electricityPrice)}"
+                        } else {
+                            "电池容量 ${"%.1f".format(batteryCapacity)} kWh · 电费单价 ¥${"%.2f".format(electricityPrice)}/度"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    painter = painterResource(R.drawable.ic_phosphor_caret_right),
+                    contentDescription = if (expanded) "收起" else "展开",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .rotate(arrowRotation)
+                )
+            }
+
+            // 展开内容
+            if (expanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(0.6.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                )
+
+                // 配置项 1: 动力电池容量
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showBatteryDialog = true }
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "动力电池容量",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(percent = 50),
+                            color = MaterialTheme.glassInsetSurface,
+                            border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "${"%.1f".format(batteryCapacity)}kWh",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                        Icon(
+                            painter = painterResource(R.drawable.ic_phosphor_caret_right),
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // 配置项 2: 充电电费单价
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showPriceDialog = true }
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "充电电费单价",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(percent = 50),
+                            color = MaterialTheme.glassInsetSurface,
+                            border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "¥${"%.2f".format(electricityPrice)}/kWh",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.statusGood,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                        Icon(
+                            painter = painterResource(R.drawable.ic_phosphor_caret_right),
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // 增程车型专享配置项
+                if (isReev) {
+                    // 配置项 3: 标称油箱容积
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showFuelTankDialog = true }
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "标称油箱容积",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(percent = 50),
+                                color = MaterialTheme.glassInsetSurface,
+                                border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            ) {
+                                Text(
+                                    text = "${"%.1f".format(fuelTankCapacity)}L",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                            Icon(
+                                painter = painterResource(R.drawable.ic_phosphor_caret_right),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // 配置项 4: 92号燃油单价
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showFuelPriceDialog = true }
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "92号燃油单价",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(percent = 50),
+                                color = MaterialTheme.glassInsetSurface,
+                                border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            ) {
+                                Text(
+                                    text = "¥${"%.2f".format(fuelPrice)}/L",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFFF9800),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                            Icon(
+                                painter = painterResource(R.drawable.ic_phosphor_caret_right),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 弹窗 1: 电池容量编辑
+    if (showBatteryDialog) {
+        var tempCapacityStr by remember { mutableStateOf(String.format(java.util.Locale.US, "%.1f", batteryCapacity)) }
+        AlertDialog(
+            onDismissRequest = { showBatteryDialog = false },
+            title = { Text("设置动力电池总容量", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("请输入车辆动力电池的标称/额定容量（kWh），用于根据电量百分比计算消耗电量与百公里电耗：", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = tempCapacityStr,
+                        onValueChange = { input ->
+                            val cleaned = input.filter { it.isDigit() || it == '.' }
+                            val parts = cleaned.split('.')
+                            if (parts.size <= 2) {
+                                val decimals = parts.getOrNull(1)
+                                if (decimals == null || decimals.length <= 1) {
+                                    tempCapacityStr = cleaned
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        trailingIcon = { Text("kWh", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val cap = tempCapacityStr.toDoubleOrNull()
+                        if (cap != null && cap > 0) {
+                            val rounded = String.format(java.util.Locale.US, "%.1f", cap).toDoubleOrNull() ?: cap
+                            batteryCapacity = rounded
+                            store.saveBatteryCapacityKwh(vin, rounded)
+                            // 重新核算历史记录电耗
+                            val updated = store.loadRecords(vin).map { r ->
+                                if (r.type == com.leapauto.app.trip.TripType.DRIVING && !r.chargedDuringTrip) {
+                                    val socDelta = (r.startSoc - r.endSoc).coerceAtLeast(0.0)
+                                    val consumed = (socDelta / 100.0) * rounded
+                                    val roundedConsumed = if (consumed > 0.001) maxOf(0.1, (consumed * 10.0).roundToInt() / 10.0) else 0.0
+                                    val roundedAvg = if (r.distanceKm > 0 && roundedConsumed > 0.0) {
+                                        ((roundedConsumed / r.distanceKm) * 100.0 * 10.0).roundToInt() / 10.0
+                                    } else 0.0
+                                    val elecCost = roundedConsumed * electricityPrice
+                                    val fuelCost = (r.fuelConsumedLiters ?: 0.0) * fuelPrice
+                                    val totalCost = if (elecCost + fuelCost > 0.0) maxOf(0.01, ((elecCost + fuelCost) * 100.0).roundToInt() / 100.0) else 0.0
+                                    r.copy(
+                                        consumedKwh = roundedConsumed,
+                                        avgKwhPer100Km = roundedAvg,
+                                        estimatedCostYuan = totalCost
+                                    )
+                                } else r
+                            }
+                            store.saveRecords(vin, updated)
+                        }
+                        showBatteryDialog = false
+                    }
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatteryDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // 弹窗 2: 电费单价编辑
+    if (showPriceDialog) {
+        var tempPriceStr by remember { mutableStateOf(String.format(java.util.Locale.US, "%.2f", electricityPrice)) }
+        AlertDialog(
+            onDismissRequest = { showPriceDialog = false },
+            title = { Text("设置充电电费单价", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("用于计算单次行程电费花费（支持家充谷电或公充均价）：", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = tempPriceStr,
+                        onValueChange = { input ->
+                            val cleaned = input.filter { it.isDigit() || it == '.' }
+                            val parts = cleaned.split('.')
+                            if (parts.size <= 2) {
+                                val decimals = parts.getOrNull(1)
+                                if (decimals == null || decimals.length <= 2) {
+                                    tempPriceStr = cleaned
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        trailingIcon = { Text("元/kWh", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val p = tempPriceStr.toDoubleOrNull()
+                        if (p != null && p > 0) {
+                            val rounded = String.format(java.util.Locale.US, "%.2f", p).toDoubleOrNull() ?: p
+                            electricityPrice = rounded
+                            store.saveElectricityPrice(rounded)
+                            val updated = store.loadRecords(vin).map { r ->
+                                if (r.type == com.leapauto.app.trip.TripType.DRIVING && !r.chargedDuringTrip) {
+                                    val elecCost = r.consumedKwh * rounded
+                                    val fuelCost = (r.fuelConsumedLiters ?: 0.0) * fuelPrice
+                                    val totalCost = if (elecCost + fuelCost > 0.0) maxOf(0.01, ((elecCost + fuelCost) * 100.0).roundToInt() / 100.0) else 0.0
+                                    r.copy(estimatedCostYuan = totalCost)
+                                } else r
+                            }
+                            store.saveRecords(vin, updated)
+                        }
+                        showPriceDialog = false
+                    }
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPriceDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // 弹窗 3: 标称油箱容积编辑
+    if (showFuelTankDialog) {
+        var tempTankStr by remember { mutableStateOf(String.format(java.util.Locale.US, "%.1f", fuelTankCapacity)) }
+        AlertDialog(
+            onDismissRequest = { showFuelTankDialog = false },
+            title = { Text("设置标称油箱容积", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("请输入增程车型油箱标称容积（L），用于根据燃油百分比差值计算消耗升数：", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = tempTankStr,
+                        onValueChange = { input ->
+                            val cleaned = input.filter { it.isDigit() || it == '.' }
+                            val parts = cleaned.split('.')
+                            if (parts.size <= 2) {
+                                val decimals = parts.getOrNull(1)
+                                if (decimals == null || decimals.length <= 1) {
+                                    tempTankStr = cleaned
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        trailingIcon = { Text("L", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val cap = tempTankStr.toDoubleOrNull()
+                        if (cap != null && cap > 0) {
+                            val rounded = String.format(java.util.Locale.US, "%.1f", cap).toDoubleOrNull() ?: cap
+                            fuelTankCapacity = rounded
+                            store.saveFuelTankCapacityLiters(vin, rounded)
+                        }
+                        showFuelTankDialog = false
+                    }
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFuelTankDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // 弹窗 4: 92号燃油单价编辑
+    if (showFuelPriceDialog) {
+        var tempFuelPriceStr by remember { mutableStateOf(String.format(java.util.Locale.US, "%.2f", fuelPrice)) }
+        AlertDialog(
+            onDismissRequest = { showFuelPriceDialog = false },
+            title = { Text("设置92号燃油单价", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("用于计算增程器介入行驶时的燃油费用（默认参考2026最新全国92号均价）：", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = tempFuelPriceStr,
+                        onValueChange = { input ->
+                            val cleaned = input.filter { it.isDigit() || it == '.' }
+                            val parts = cleaned.split('.')
+                            if (parts.size <= 2) {
+                                val decimals = parts.getOrNull(1)
+                                if (decimals == null || decimals.length <= 2) {
+                                    tempFuelPriceStr = cleaned
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        trailingIcon = { Text("元/L", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val p = tempFuelPriceStr.toDoubleOrNull()
+                        if (p != null && p > 0) {
+                            val rounded = String.format(java.util.Locale.US, "%.2f", p).toDoubleOrNull() ?: p
+                            fuelPrice = rounded
+                            store.saveFuelPrice(rounded)
+                            val updated = store.loadRecords(vin).map { r ->
+                                if (r.type == com.leapauto.app.trip.TripType.DRIVING && !r.chargedDuringTrip) {
+                                    val elecCost = r.consumedKwh * electricityPrice
+                                    val fuelCost = (r.fuelConsumedLiters ?: 0.0) * rounded
+                                    val totalCost = if (elecCost + fuelCost > 0.0) maxOf(0.01, ((elecCost + fuelCost) * 100.0).roundToInt() / 100.0) else 0.0
+                                    r.copy(estimatedCostYuan = totalCost)
+                                } else r
+                            }
+                            store.saveRecords(vin, updated)
+                        }
+                        showFuelPriceDialog = false
+                    }
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFuelPriceDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+// [FEATURE: TRIP_LOG] End
+
 @Composable
 private fun VehicleCustomImageCard(
     vehicleVin: String,
@@ -3118,21 +3775,39 @@ private fun VehicleCustomImageCard(
         shadowElevation = 0.dp
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 第一行：标题 + 右侧无轮廓文字操作按钮
+            // 第一行：左侧圆底图标 + 标题/副标题 + 右侧操作按钮
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "爱车主图定制",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-
+                Surface(
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    color = (if (hasCustomImage) MaterialTheme.statusGood else MaterialTheme.colorScheme.primary).copy(alpha = 0.12f)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_phosphor_car),
+                        contentDescription = null,
+                        tint = if (hasCustomImage) MaterialTheme.statusGood else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        "爱车主图定制",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        if (hasCustomImage) "已应用个性化主图" else "从相册上传个性化爱车抠图",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -3165,9 +3840,11 @@ private fun VehicleCustomImageCard(
                 }
             }
 
-            // 第二行：当前状态标签 + 快速指南胶囊
+            // 第二行：当前状态标签 + 快速指南胶囊（向右缩进48dp对齐文字基线）
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -3392,22 +4069,17 @@ private fun VehicleCustomImageGuideDialog(
 @Composable
 private fun Widget4x2ActionsCard(
     actions: List<String>,
-    onActionsChange: (List<String>) -> Unit
+    onActionsChange: (List<String>) -> Unit,
+    seamless: Boolean = false
 ) {
     var showDialog by rememberSaveable { mutableStateOf(false) }
 
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .settingsGlassCard(tone = SettingsIconTone.KEY),
-        shape = RoundedCornerShape(16.dp),
-        color = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = glassCardBorder(),
-        shadowElevation = 0.dp
-    ) {
+    val cardContent = @Composable {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+            modifier = Modifier.padding(
+                horizontal = if (seamless) 0.dp else 16.dp,
+                vertical = if (seamless) 0.dp else 11.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -3418,7 +4090,7 @@ private fun Widget4x2ActionsCard(
                 Column(Modifier.weight(1f)) {
                     Text(
                         "4×2 插件快捷按键",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = if (seamless) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
@@ -3443,7 +4115,7 @@ private fun Widget4x2ActionsCard(
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.glassInsetSurface,
-                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                        border = glassInsetBorder(),
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(
@@ -3472,6 +4144,23 @@ private fun Widget4x2ActionsCard(
         }
     }
 
+    if (seamless) {
+        cardContent()
+    } else {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .settingsGlassCard(tone = SettingsIconTone.KEY),
+            shape = RoundedCornerShape(16.dp),
+            color = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = glassCardBorder(),
+            shadowElevation = 0.dp
+        ) {
+            cardContent()
+        }
+    }
+
     if (showDialog) {
         Widget4x2ActionsDialog(
             currentActions = actions,
@@ -3481,6 +4170,96 @@ private fun Widget4x2ActionsCard(
                 showDialog = false
             }
         )
+    }
+}
+
+@Composable
+private fun ExternalQuickControlsConfigCard(
+    actions: List<String>,
+    onActionsChange: (List<String>) -> Unit
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        animationSpec = tween(220),
+        label = "externalControlsCaretRotation"
+    )
+    val iconColor = settingsIconColor(SettingsIconTone.KEY)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingsGlassCard(tone = SettingsIconTone.KEY),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = glassCardBorder(),
+        shadowElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    color = iconColor.copy(alpha = 0.12f)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_phosphor_key),
+                        contentDescription = null,
+                        tint = iconColor,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        "桌面插件与控制中心快捷配置",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "自定义桌面 4×2 按钮与下拉通知栏快捷开关",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    painter = painterResource(R.drawable.ic_phosphor_caret_right),
+                    contentDescription = if (expanded) "收起" else "展开",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .rotate(arrowRotation)
+                )
+            }
+
+            if (expanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(0.6.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                )
+                Widget4x2ActionsCard(actions = actions, onActionsChange = onActionsChange, seamless = true)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(0.6.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                )
+                QuickSettingsTileCard(seamless = true)
+            }
+        }
     }
 }
 
@@ -3565,7 +4344,8 @@ private fun ThemeConfigCard(
 @Composable
 private fun WidgetBackgroundStyleCard(
     style: Int,
-    onStyleChange: (Int) -> Unit
+    onStyleChange: (Int) -> Unit,
+    seamless: Boolean = false
 ) {
     val options = listOf(
         SessionStore.WIDGET_BG_STYLE_MICROCRYSTAL to "经典微晶",
@@ -3573,18 +4353,12 @@ private fun WidgetBackgroundStyleCard(
     )
     val currentLabel = if (style == SessionStore.WIDGET_BG_STYLE_MICROCRYSTAL) "经典微晶" else "官方山河"
 
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .settingsGlassCard(tone = SettingsIconTone.THEME),
-        shape = RoundedCornerShape(16.dp),
-        color = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = glassCardBorder(),
-        shadowElevation = 0.dp
-    ) {
+    val cardContent = @Composable {
         Column(
-            Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+            Modifier.padding(
+                horizontal = if (seamless) 0.dp else 16.dp,
+                vertical = if (seamless) 0.dp else 11.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -3595,7 +4369,7 @@ private fun WidgetBackgroundStyleCard(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = "小组件背景风格",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = if (seamless) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
@@ -3640,28 +4414,43 @@ private fun WidgetBackgroundStyleCard(
             }
         }
     }
+
+    if (seamless) {
+        cardContent()
+    } else {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .settingsGlassCard(tone = SettingsIconTone.THEME),
+            shape = RoundedCornerShape(16.dp),
+            color = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = glassCardBorder(),
+            shadowElevation = 0.dp
+        ) {
+            cardContent()
+        }
+    }
 }
 
 @Composable
-private fun WidgetOpacityCard(opacity: Int, onOpacityChange: (Int) -> Unit) {
+private fun WidgetOpacityCard(
+    opacity: Int,
+    onOpacityChange: (Int) -> Unit,
+    seamless: Boolean = false
+) {
     val options = listOf(
         100 to "不透明",
         75 to "微透",
         50 to "半透",
         25 to "全透"
     )
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .settingsGlassCard(tone = SettingsIconTone.THEME),
-        shape = RoundedCornerShape(16.dp),
-        color = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = glassCardBorder(),
-        shadowElevation = 0.dp
-    ) {
+    val cardContent = @Composable {
         Column(
-            Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+            Modifier.padding(
+                horizontal = if (seamless) 0.dp else 16.dp,
+                vertical = if (seamless) 0.dp else 11.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -3672,7 +4461,7 @@ private fun WidgetOpacityCard(opacity: Int, onOpacityChange: (Int) -> Unit) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         "小组件透明度",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = if (seamless) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
@@ -3716,15 +4505,49 @@ private fun WidgetOpacityCard(opacity: Int, onOpacityChange: (Int) -> Unit) {
             }
         }
     }
+
+    if (seamless) {
+        cardContent()
+    } else {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .settingsGlassCard(tone = SettingsIconTone.THEME),
+            shape = RoundedCornerShape(16.dp),
+            color = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = glassCardBorder(),
+            shadowElevation = 0.dp
+        ) {
+            cardContent()
+        }
+    }
 }
 
 @Composable
-private fun QuickSettingsTileCard() {
-    val context = androidx.compose.ui.platform.LocalContext.current
+private fun WidgetAppearanceConfigCard(
+    style: Int,
+    onStyleChange: (Int) -> Unit,
+    opacity: Int,
+    onOpacityChange: (Int) -> Unit,
+    showOpacity: Boolean = style == SessionStore.WIDGET_BG_STYLE_MICROCRYSTAL
+) {
+    val opacityOptions = listOf(100 to "不透明", 75 to "微透", 50 to "半透", 25 to "全透")
+    val opacityLabel = opacityOptions.firstOrNull { it.first == opacity }?.second ?: "$opacity%"
+    val subtitle = if (style == SessionStore.WIDGET_BG_STYLE_MICROCRYSTAL) "经典微晶 · $opacityLabel" else "官方山河天幕画卷"
+
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        animationSpec = tween(220),
+        label = "widgetAppearanceCaretRotation"
+    )
+    val iconColor = settingsIconColor(SettingsIconTone.THEME)
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .settingsGlassCard(tone = SettingsIconTone.KEY),
+            .settingsGlassCard(tone = SettingsIconTone.THEME),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -3732,14 +4555,93 @@ private fun QuickSettingsTileCard() {
         shadowElevation = 0.dp
     ) {
         Column(
-            Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    color = iconColor.copy(alpha = 0.12f)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_theme_palette),
+                        contentDescription = null,
+                        tint = iconColor,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        "小组件外观风格与透明度配置",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    painter = painterResource(R.drawable.ic_phosphor_caret_right),
+                    contentDescription = if (expanded) "收起" else "展开",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .rotate(arrowRotation)
+                )
+            }
+
+            if (expanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(0.6.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                )
+                WidgetBackgroundStyleCard(style = style, onStyleChange = onStyleChange, seamless = true)
+                if (style == SessionStore.WIDGET_BG_STYLE_MICROCRYSTAL) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(0.6.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                    )
+                    WidgetOpacityCard(opacity = opacity, onOpacityChange = onOpacityChange, seamless = true)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickSettingsTileCard() = QuickSettingsTileCard(seamless = false)
+
+@Composable
+private fun QuickSettingsTileCard(seamless: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val cardContent = @Composable {
+        Column(
+            Modifier.padding(
+                horizontal = if (seamless) 0.dp else 16.dp,
+                vertical = if (seamless) 0.dp else 11.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         "下拉控制中心快捷开关",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = if (seamless) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
@@ -3776,7 +4678,7 @@ private fun QuickSettingsTileCard() {
                             },
                         shape = RoundedCornerShape(10.dp),
                         color = if (isTileAdded) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.16f) else MaterialTheme.glassInsetSurface,
-                        border = BorderStroke(0.5.dp, if (isTileAdded) MaterialTheme.colorScheme.error.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                        border = if (isTileAdded) BorderStroke(0.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.35f)) else glassInsetBorder()
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 9.dp),
@@ -3801,6 +4703,23 @@ private fun QuickSettingsTileCard() {
                     }
                 }
             }
+        }
+    }
+
+    if (seamless) {
+        cardContent()
+    } else {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .settingsGlassCard(tone = SettingsIconTone.KEY),
+            shape = RoundedCornerShape(16.dp),
+            color = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = glassCardBorder(),
+            shadowElevation = 0.dp
+        ) {
+            cardContent()
         }
     }
 }
@@ -4126,7 +5045,8 @@ private fun Modifier.settingsGlassCard(
         shape = shape,
         auraColor = resolvedAura,
         auraCenter = Offset(0.84f, 0.16f),
-        auraRadiusRatio = 0.62f
+        auraRadiusRatio = 0.62f,
+        topSpecularLine = true
     )
 }
 
@@ -4215,7 +5135,7 @@ internal fun Modifier.frostedGlassCard(
                 )
             }
         }
-    }
+}
 
 @Composable
 internal fun Modifier.solidDialogModifier(
@@ -9056,6 +9976,9 @@ fun EnergyHomePagerCard(
     state: EnergyAnalyticsState,
     vehicleTotalMileage: String? = null,
     vehicleModel: String = "",
+    // [FEATURE: TRIP_LOG] Start
+    onOpenTripHistory: (() -> Unit)? = null,
+    // [FEATURE: TRIP_LOG] End
     modifier: Modifier = Modifier,
     seamless: Boolean = false
 ) {
@@ -9095,11 +10018,48 @@ fun EnergyHomePagerCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = pageTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    // [FEATURE: TRIP_LOG] Start
+                    val canOpenTripHistory = onOpenTripHistory != null &&
+                        EnergyHomePage.entries[pagerState.currentPage] == EnergyHomePage.RECENT_MILEAGE
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = if (canOpenTripHistory) {
+                            Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onOpenTripHistory() }
+                        } else Modifier
+                    ) {
+                        Text(
+                            text = pageTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (canOpenTripHistory) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.glassInsetSurface,
+                                border = BorderStroke(
+                                    0.5.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier.size(18.dp)
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_phosphor_caret_right),
+                                        contentDescription = "查看行驶记录",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    // [FEATURE: TRIP_LOG] End
                     if (pagerState.currentPage == EnergyHomePage.WEEKLY_CONSUMPTION.ordinal) {
                         val rank = (state as? EnergyAnalyticsState.Success)?.data?.rankLabel
                         rank?.let {
@@ -9178,126 +10138,248 @@ fun EnergyHomeSummaryPage(
     val totalMileageDisplay = data.totalMileage?.value?.trim()?.removeSuffix("km")?.trim()
         ?: vehicleTotalMileage?.trim()?.removeSuffix("km")?.trim()?.takeIf { it.isNotBlank() && it != "--" }
         ?: "—"
-    val daysHasValue = data.ownershipDays?.value != null
-    val mileageHasValue = totalMileageDisplay != "—" && totalMileageDisplay != "--"
-    val energyHasValue = data.cumulativeEnergy != null
-
+    val daysValue = data.ownershipDays?.value?.toLongOrNull()
     val daysText = data.ownershipDays?.value?.toString() ?: "--"
     val energyText = EnergyHomeCardPolicy.formatCumulativeEnergy(data.cumulativeEnergy?.value)
 
-    Row(
+    val mileageNumeric = totalMileageDisplay.replace(",", "").toDoubleOrNull()
+    val dailyMileageText = if (mileageNumeric != null && daysValue != null && daysValue > 0) {
+        String.format(java.util.Locale.US, "%.0f", mileageNumeric / daysValue)
+    } else null
+    val overallNumber = data.overallConsumption?.value?.trim()?.removeSuffix("kWh/100km")?.trim() ?: "--"
+
+    val isDark = LocalAppDarkTheme.current
+    val dividerColor = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.08f)
+    val cyanColor = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
+    val energyColor = MaterialTheme.statusGood
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        EnergyMetricCard(
-            label = "提车时长",
-            value = daysText,
-            unit = "天",
-            valueColor = if (daysHasValue) MaterialTheme.statusGood else MaterialTheme.colorScheme.onSurfaceVariant,
-            accentColor = MaterialTheme.statusGood,
-            modifier = Modifier.weight(1f)
-        )
-        EnergyMetricCard(
-            label = "累计里程",
-            value = totalMileageDisplay,
-            unit = "km",
-            valueColor = if (mileageHasValue) MaterialTheme.statusWarn else MaterialTheme.colorScheme.onSurfaceVariant,
-            accentColor = MaterialTheme.statusWarn,
-            modifier = Modifier.weight(1f)
-        )
-        EnergyMetricCard(
-            label = "累计能耗",
-            value = energyText,
-            unit = "kWh",
-            valueColor = if (energyHasValue) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            accentColor = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f)
-        )
+        // ====== 1. 上半部分：钛金三联主仪表 ======
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 列 1: 提车时长 (冰川天青)
+            PrecisionGaugeColumn(
+                code = "ACTIVE DAYS",
+                value = daysText,
+                unit = "天",
+                label = "提车相伴时长",
+                valueColor = cyanColor,
+                modifier = Modifier.weight(1f)
+            )
+
+            // 垂直光学切光晶线
+            Box(
+                modifier = Modifier
+                    .width(0.8.dp)
+                    .height(44.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, dividerColor, Color.Transparent)
+                        )
+                    )
+            )
+
+            // 列 2: 累计里程 (钛空冷白主资产，去除绿点)
+            PrecisionGaugeColumn(
+                code = "ODOMETER",
+                value = totalMileageDisplay,
+                unit = "km",
+                label = "累计行驶里程",
+                valueColor = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1.08f)
+            )
+
+            // 垂直光学切光晶线
+            Box(
+                modifier = Modifier
+                    .width(0.8.dp)
+                    .height(44.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, dividerColor, Color.Transparent)
+                        )
+                    )
+            )
+
+            // 列 3: 累计能耗 (生态翡翠绿)
+            PrecisionGaugeColumn(
+                code = "TOTAL ENERGY",
+                value = energyText,
+                unit = "kWh",
+                label = "累计用电总能耗",
+                valueColor = energyColor,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        // ====== 2. 下半部分：贯通式微晶能效状态条 ======
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp),
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.glassInsetSurface.copy(alpha = 0.40f),
+            border = glassInsetBorder(),
+            shadowElevation = 0.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 左侧：综合百公里能耗 (生态翡翠绿大字)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "综合能耗",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = overallNumber,
+                            style = MaterialTheme.typography.labelMedium.energyStyle().copy(fontSize = 15.5.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = energyColor
+                        )
+                        Text(
+                            text = "kWh/100km",
+                            style = MaterialTheme.typography.labelSmall.energyStyle().copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            modifier = Modifier.padding(bottom = 1.dp)
+                        )
+                    }
+                }
+
+                // 中间微型切光分割点
+                Box(
+                    modifier = Modifier
+                        .size(3.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f))
+                )
+
+                // 右侧：日均行驶里程 (冰川天青大字)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "每日平均",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = dailyMileageText ?: "--",
+                            style = MaterialTheme.typography.labelMedium.energyStyle().copy(fontSize = 15.5.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = cyanColor
+                        )
+                        Text(
+                            text = "km/天",
+                            style = MaterialTheme.typography.labelSmall.energyStyle().copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            modifier = Modifier.padding(bottom = 1.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun EnergyMetricCard(
-    label: String,
+private fun PrecisionGaugeColumn(
+    code: String,
     value: String,
     unit: String,
-    valueColor: Color,
-    accentColor: Color,
+    label: String,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    Column(
         modifier = modifier
             .fillMaxHeight()
-            .frostedGlassCard(
-                shape = RoundedCornerShape(12.dp),
-                auraColor = accentColor.copy(alpha = 0.08f),
-                auraCenter = Offset(0.5f, 0.2f)
-            ),
-        shape = RoundedCornerShape(12.dp),
-        color = Color.Transparent,
-        border = glassCardBorder()
+            .padding(horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 6.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        // 1. 上层：激光刻印英文字标（极细、等宽微距，纯净对称无杂点）
+        Text(
+            text = code,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                letterSpacing = 0.8.sp,
+                lineHeight = 11.sp
+            ),
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+            maxLines = 1
+        )
+
+        Spacer(Modifier.height(6.dp))
+
+        // 2. 中层：高对比度晶体大字 + 精密基线沉降单位
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            // 1. 标题行靠顶舒展排布，明确卡片属性层级
-            Row(
-                modifier = Modifier.padding(top = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(5.dp)
-                        .clip(CircleShape)
-                        .background(accentColor)
-                )
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
-                )
-            }
-
-            // 2. 核心数值与单位居中优雅分布，彻底消除上下紧挤压抑感
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = value,
-                    fontSize = 20.sp,
-                    lineHeight = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = valueColor,
-                    style = MaterialTheme.typography.titleMedium.energyStyle(),
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(Modifier.height(4.dp))
-
-                Text(
-                    text = unit,
-                    style = MaterialTheme.typography.labelSmall.energyStyle().copy(fontSize = 11.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
-                )
-            }
+            Text(
+                text = value,
+                fontSize = if (value.length > 5) 21.sp else 23.sp,
+                lineHeight = 23.sp,
+                fontWeight = FontWeight.Bold,
+                color = valueColor,
+                style = MaterialTheme.typography.titleLarge.energyStyle(),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = unit,
+                style = MaterialTheme.typography.labelSmall.energyStyle().copy(fontSize = 11.sp),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                modifier = Modifier.padding(bottom = 2.dp),
+                maxLines = 1
+            )
         }
+
+        Spacer(Modifier.height(5.dp))
+
+        // 3. 下层：静谧沉稳的中文字标
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, lineHeight = 13.sp),
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.80f),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -9387,6 +10469,7 @@ private fun EnergyHomeBars(
     points: List<com.leapauto.app.EnergySeriesPoint>,
     modifier: Modifier = Modifier
 ) {
+    val isDark = LocalAppDarkTheme.current
     val max = points.maxOfOrNull { it.value }?.takeIf { it > 0.0 } ?: 1.0
     BoxWithConstraints(
         modifier = modifier
@@ -9396,7 +10479,7 @@ private fun EnergyHomeBars(
         val totalHeight = maxHeight
         val valueLabelHeight = 18.dp
         val dateLabelHeight = 16.dp
-        val spacing = 8.dp
+        val spacing = 6.dp
         val trackHeight = (totalHeight - valueLabelHeight - dateLabelHeight - spacing).coerceAtLeast(32.dp)
 
         Row(
@@ -9406,20 +10489,23 @@ private fun EnergyHomeBars(
         ) {
             points.forEachIndexed { index, point ->
                 val isLast = index == points.lastIndex
-                val ratio = (point.value / max).toFloat().coerceIn(0f, 1f)
-                val barHeight = (trackHeight * 0.15f + trackHeight * 0.85f * ratio).coerceIn(6.dp, trackHeight)
+                val barRatio = EnergyHomeCardPolicy.barHeightRatio(point.value, max)
+                val barHeight = (trackHeight * barRatio).coerceIn(6.dp, trackHeight)
                 val barBrush = if (isLast) {
                     Brush.verticalGradient(
                         colors = listOf(
                             MaterialTheme.statusGood,
-                            MaterialTheme.statusGood.copy(alpha = 0.70f)
+                            MaterialTheme.statusGood.copy(alpha = 0.65f)
                         )
                     )
                 } else {
                     Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                        colors = if (isDark) listOf(
+                            MaterialTheme.statusGood.copy(alpha = 0.42f),
+                            MaterialTheme.statusGood.copy(alpha = 0.18f)
+                        ) else listOf(
+                            MaterialTheme.statusGood.copy(alpha = 0.48f),
+                            MaterialTheme.statusGood.copy(alpha = 0.22f)
                         )
                     )
                 }
@@ -9447,21 +10533,18 @@ private fun EnergyHomeBars(
                         softWrap = false
                     )
 
-                    // 能量仓胶囊轨道
+                    // 能量柱容器 (透明留白，自底向上平滑生长，去除外层多余灰槽及切角伪影)
                     Box(
                         modifier = Modifier
-                            .width(18.dp)
-                            .height(trackHeight)
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(MaterialTheme.glassInsetSurface)
-                            .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f), RoundedCornerShape(9.dp)),
+                            .width(10.dp)
+                            .height(trackHeight),
                         contentAlignment = Alignment.BottomCenter
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(barHeight)
-                                .clip(RoundedCornerShape(9.dp))
+                                .clip(RoundedCornerShape(percent = 50))
                                 .background(barBrush)
                         )
                     }
@@ -10270,7 +11353,7 @@ fun ClimateControlBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .padding(horizontal = 4.dp, vertical = 6.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(11.dp)
         ) {
@@ -10451,10 +11534,15 @@ fun ClimateControlBottomSheet(
 
             // 2. 全息光环温控主盘 (38sp 超大字 + 两侧 44dp 舒适步进触控 + 极光光晕)
             val climateRingAura = if (isAcOn) currentAcColor.copy(alpha = 0.22f) else null
+            val climateRingBorder = if (isAcOn) {
+                BorderStroke(1.dp, currentAcColor.copy(alpha = 0.45f))
+            } else {
+                glassCardBorder()
+            }
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color.Transparent,
-                border = BorderStroke(1.dp, if (isAcOn) currentAcColor.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                border = climateRingBorder,
                 shadowElevation = 0.dp,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -10462,7 +11550,8 @@ fun ClimateControlBottomSheet(
                         shape = RoundedCornerShape(20.dp),
                         auraColor = climateRingAura,
                         auraCenter = Offset(0.5f, 0.4f),
-                        auraRadiusRatio = 0.65f
+                        auraRadiusRatio = 0.65f,
+                        topSpecularLine = true
                     )
             ) {
                 Row(
@@ -10475,7 +11564,7 @@ fun ClimateControlBottomSheet(
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.glassSurface,
-                        border = BorderStroke(1.dp, if (isAcOn) currentAcColor.copy(alpha = 0.30f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                        border = if (isAcOn) BorderStroke(1.dp, currentAcColor.copy(alpha = 0.30f)) else glassInsetBorder(),
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
@@ -10526,7 +11615,7 @@ fun ClimateControlBottomSheet(
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.glassSurface,
-                        border = BorderStroke(1.dp, if (isAcOn) currentAcColor.copy(alpha = 0.30f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                        border = if (isAcOn) BorderStroke(1.dp, currentAcColor.copy(alpha = 0.30f)) else glassInsetBorder(),
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
@@ -10688,53 +11777,70 @@ fun ClimateControlBottomSheet(
                 }
             }
 
-            // 4. 完整空调设置界面 (风量滑块 / 出风方向 / 座椅舒适度)
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+            // 4. 完整空调设置微晶舱 (风量滑块 / 出风方向)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                border = glassCardBorder(),
+                shadowElevation = 0.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedGlassCard(
+                        shape = RoundedCornerShape(16.dp),
+                        topSpecularLine = true
+                    )
             ) {
-                // 风量调节
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("风量", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(
-                            "$editedWindLevel 挡",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (actionsEnabled) MaterialTheme.statusGood else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    if (fanRange.first < fanRange.last) {
-                        ThinClimateSlider(
-                            value = editedWindLevel.toFloat(),
-                            onValueChange = {
-                                userLastActionEpochMs = System.currentTimeMillis()
-                                editedWindLevel = it.roundToInt().coerceIn(fanRange)
-                            },
-                            onValueChangeFinished = {
-                                userLastActionEpochMs = System.currentTimeMillis()
-                                optimisticAcSwitch = true
-                                optimisticPresetName = null
-                                submitSettings(HvacOperation.ON, "风量已调至 ${editedWindLevel}挡")
-                            },
-                            onValueChangeCancelled = {
-                                restoreEditedClimateFromStatus()
-                            },
-                            enabled = actionsEnabled,
-                            valueRange = fanRange.first.toFloat()..fanRange.last.toFloat(),
-                            steps = (fanRange.last - fanRange.first - 1).coerceAtLeast(0),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 风量调节
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("风量", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "$editedWindLevel 挡",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (actionsEnabled) MaterialTheme.statusGood else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        if (fanRange.first < fanRange.last) {
+                            ThinClimateSlider(
+                                value = editedWindLevel.toFloat(),
+                                onValueChange = {
+                                    userLastActionEpochMs = System.currentTimeMillis()
+                                    editedWindLevel = it.roundToInt().coerceIn(fanRange)
+                                },
+                                onValueChangeFinished = {
+                                    userLastActionEpochMs = System.currentTimeMillis()
+                                    optimisticAcSwitch = true
+                                    optimisticPresetName = null
+                                    submitSettings(HvacOperation.ON, "风量已调至 ${editedWindLevel}挡")
+                                },
+                                onValueChangeCancelled = {
+                                    restoreEditedClimateFromStatus()
+                                },
+                                enabled = actionsEnabled,
+                                valueRange = fanRange.first.toFloat()..fanRange.last.toFloat(),
+                                steps = (fanRange.last - fanRange.first - 1).coerceAtLeast(0),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         } else {
                             Text("固定挡位", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
 
-                // 5. 出风方向与座椅舒适度（完全展开）
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(0.6.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f))
+                    )
+
                     // 出风方向
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -10793,17 +11899,17 @@ fun ClimateControlBottomSheet(
                             )
                         }
                     }
-
-                    // 座椅舒适度控制卡片
-                    SeatComfortControlCard(
-                        status = status,
-                        enabled = actionsEnabled,
-                        onControl = onControl,
-                        vehicleModel = vehicleModel
-                    )
                 }
-                Spacer(Modifier.height(16.dp))
             }
+
+            // 座椅舒适度控制卡片
+            SeatComfortControlCard(
+                status = status,
+                enabled = actionsEnabled,
+                onControl = onControl,
+                vehicleModel = vehicleModel
+            )
+            Spacer(Modifier.height(16.dp))
         }
 
         // 悬浮居中 HUD 胶囊：绝对层叠浮动在顶部，零像素推挤内容，彻底根治高度抖动与抽屉回缩
@@ -10840,10 +11946,11 @@ private fun QuickClimateCircleAction(
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = if (isActive) activeColor.copy(alpha = 0.16f) else MaterialTheme.glassInsetSurface,
-        border = BorderStroke(
-            0.8.dp,
-            if (isActive) activeColor.copy(alpha = 0.50f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)
-        ),
+        border = if (isActive) {
+            BorderStroke(0.8.dp, activeColor.copy(alpha = 0.50f))
+        } else {
+            glassInsetBorder()
+        },
         shadowElevation = 0.dp,
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
@@ -10988,7 +12095,7 @@ fun SeatComfortControlCard(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .frostedGlassCard(shape = RoundedCornerShape(16.dp)),
+            .frostedGlassCard(shape = RoundedCornerShape(16.dp), topSpecularLine = true),
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -11029,7 +12136,7 @@ fun SeatComfortControlCard(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(14.dp),
                             color = MaterialTheme.glassInsetSurface,
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            border = glassInsetBorder()
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
@@ -11080,7 +12187,7 @@ fun SeatComfortControlCard(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(14.dp),
                             color = MaterialTheme.glassInsetSurface,
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            border = glassInsetBorder()
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
@@ -11139,7 +12246,7 @@ fun SeatComfortControlCard(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(14.dp),
                             color = MaterialTheme.glassInsetSurface,
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            border = glassInsetBorder()
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
@@ -11190,7 +12297,7 @@ fun SeatComfortControlCard(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(14.dp),
                             color = MaterialTheme.glassInsetSurface,
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            border = glassInsetBorder()
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
@@ -11248,7 +12355,7 @@ fun SeatComfortControlCard(
                             modifier = if (hasMirrorHeating) Modifier.weight(1f) else Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
                             color = MaterialTheme.glassInsetSurface,
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            border = glassInsetBorder()
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
@@ -11275,7 +12382,7 @@ fun SeatComfortControlCard(
                             modifier = if (hasSteerHeating) Modifier.weight(1f) else Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
                             color = MaterialTheme.glassInsetSurface,
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            border = glassInsetBorder()
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
@@ -11471,16 +12578,20 @@ fun displayEnergyMetric(metric: com.leapauto.app.EnergyMetric?, fallbackUnit: St
 }
 
 @Composable
-fun energyCompositionColor(label: String, index: Int): Color = when (label.trim()) {
-    "行车", "驾驶" -> MaterialTheme.statusGood
-    "空调" -> MaterialTheme.colorScheme.primary
-    "其他" -> MaterialTheme.statusWarn
-    else -> listOf(
-        MaterialTheme.statusGood,
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.statusWarn,
-        MaterialTheme.colorScheme.tertiary
-    )[index % 4]
+fun energyCompositionColor(label: String, index: Int): Color {
+    val isDark = LocalAppDarkTheme.current
+    val acPurple = if (isDark) Color(0xFFA78BFA) else Color(0xFF7C3AED)
+    return when (label.trim()) {
+        "行车", "驾驶" -> MaterialTheme.statusGood
+        "空调" -> acPurple
+        "其他" -> MaterialTheme.statusWarn
+        else -> listOf(
+            MaterialTheme.statusGood,
+            acPurple,
+            MaterialTheme.statusWarn,
+            MaterialTheme.colorScheme.tertiary
+        )[index % 4]
+    }
 }
 
 fun Double.formatEnergyNumber(): String =

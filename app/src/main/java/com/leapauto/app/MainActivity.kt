@@ -737,6 +737,7 @@ class MainActivity : ComponentActivity() {
         bluetoothKeyFeatureEnabled = enabled
         sessionStore.saveBluetoothKeyFeatureEnabled(enabled)
         if (enabled) {
+            bluetoothRuntime.enableFeature()
             runCatching { bluetoothRuntime.restoreBackground() }
             val accountId = session.oldAuth?.accountId.orEmpty()
             val vin = session.selectedVin
@@ -749,8 +750,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
         } else {
-            bluetoothRuntime.stopBackground()
-            bluetoothKeyController.disconnect()
+            bluetoothRuntime.disableFeature {
+                bluetoothKeyController.disconnect()
+            }
         }
     }
 
@@ -1187,6 +1189,9 @@ class MainActivity : ComponentActivity() {
         postOptimisticResponse(800L) {
             lastLockActionEpochMs = System.currentTimeMillis()
             optimisticLockState = isLock
+            if (!isLock) {
+                com.leapauto.app.trip.TripRecordStore(applicationContext).markUnlockDeparture(session.selectedVin)
+            }
             status = status?.copy(locked = isLock)
             sessionStore.updateWidgetLockState(session.selectedVin, locked = isLock)
             com.leapauto.app.tiles.TilePromptHelper.requestTilesUpdate(this@MainActivity)
@@ -1367,13 +1372,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateAutoRefreshLoop() {
-        val shouldRun = activityResumed && carScreenVisible && loggedIn && status?.isDriving == true && !activityDestroyed
+        val isDrivingActive = status?.isDriving == true ||
+            VehicleDrivingSafetyPolicy.isDrivingGear(status?.gearStatus) ||
+            (parseSpeed(status?.speed) ?: 0.0) > 0.0
+        val shouldRun = activityResumed && carScreenVisible && loggedIn && isDrivingActive && !activityDestroyed
         if (!shouldRun) {
             autoRefreshScheduled = false
             mainHandler.removeCallbacks(autoRefreshRunnable)
         } else if (!autoRefreshScheduled) {
             autoRefreshScheduled = true
-            mainHandler.post(autoRefreshRunnable)
+            mainHandler.postDelayed(autoRefreshRunnable, AUTO_REFRESH_INTERVAL_MS)
         }
     }
 
@@ -1383,7 +1391,10 @@ class MainActivity : ComponentActivity() {
                 autoRefreshScheduled = false
                 return
             }
-            if (status?.isDriving != true) {
+            val isDrivingActive = status?.isDriving == true ||
+                VehicleDrivingSafetyPolicy.isDrivingGear(status?.gearStatus) ||
+                (parseSpeed(status?.speed) ?: 0.0) > 0.0
+            if (!isDrivingActive) {
                 autoRefreshScheduled = false
                 return
             }
@@ -2723,6 +2734,40 @@ class MainActivity : ComponentActivity() {
                     throw e
                 }
                 ChargeNotificationManager.process(this@MainActivity, sessionStore, session.selectedVin, signalMap)
+                // [FEATURE: TRIP_LOG] Start
+                try {
+                    val rawMileage = signalMap.opt("totalMileage") ?: signalMap.opt("1318")
+                    val mileageKm = rawMileage?.toString()?.toDoubleOrNull()
+                    val rawSoc = signalMap.opt("preciseSoc")
+                        ?: signalMap.opt("100003")
+                        ?: signalMap.opt("soc")
+                        ?: signalMap.opt("1204")
+                    val socPercent = rawSoc?.toString()?.trim()?.removeSuffix("%")?.toDoubleOrNull()
+                    val isDriving = WidgetStatusMapper.isDriving(signalMap)
+                    val gear = signalMap.optString("gearStatus").takeIf { it.isNotBlank() }
+                        ?: signalMap.optString("1010").takeIf { it.isNotBlank() }
+                        ?: parsed.gearStatus
+                    val exactCurrentLocation = locationSnapshot?.location?.let { loc ->
+                        VehicleLocationGeocoder.getCachedAddress(loc.latitude, loc.longitude)?.let {
+                            it.shortAddress ?: it.fullAddress
+                        }
+                    } ?: (vehicleAddress?.shortAddress ?: vehicleAddress?.fullAddress)
+
+                    val fuelSocPercent = VehicleStatusMapper.fuelSocPercent(signalMap)?.toDouble()
+
+                    com.leapauto.app.trip.TripReconciliationEngine.processTelemetry(
+                        context = applicationContext,
+                        vin = session.selectedVin,
+                        mileageKm = mileageKm,
+                        socPercent = socPercent,
+                        isDriving = isDriving,
+                        gear = gear,
+                        locationName = exactCurrentLocation,
+                        carType = session.selectedCarType,
+                        fuelSocPercent = fuelSocPercent
+                    )
+                } catch (_: Exception) {}
+                // [FEATURE: TRIP_LOG] End
                 sessionStore.save(session)
                 val snapshotPowerType = if (parsed.rangeExtender) SessionStore.VehiclePowerType.RANGE_EXTENDER else (VehiclePowerTypeResolver.fromStatus(
                     signalMap, vehicleConfig.powerType, session.selectedCarType
@@ -4170,6 +4215,13 @@ class MainActivity : ComponentActivity() {
             if (address != null) {
                 runOnMain(generation) {
                     vehicleAddress = address
+                    // [FEATURE: TRIP_LOG] Start
+                    val loc = address.shortAddress ?: address.fullAddress
+                    if (!loc.isNullOrBlank()) {
+                        com.leapauto.app.trip.TripRecordStore(applicationContext)
+                            .updateLatestLocation(session.selectedVin, loc)
+                    }
+                    // [FEATURE: TRIP_LOG] End
                 }
                 if (address.adcode.isNotBlank()) {
                     val currentVin = session.selectedVin
@@ -4587,6 +4639,7 @@ class MainActivity : ComponentActivity() {
                     optimisticLockState = false
                     status = status?.copy(locked = false)
                     sessionStore.updateWidgetLockState(session.selectedVin, locked = false)
+                    com.leapauto.app.trip.TripRecordStore(applicationContext).markUnlockDeparture(session.selectedVin)
                     com.leapauto.app.tiles.TilePromptHelper.requestTilesUpdate(this@MainActivity)
                     ControlWidget.refreshData(this@MainActivity)
                 }
